@@ -1,0 +1,34 @@
+package port
+
+import (
+	"context"
+	"io"
+)
+
+type RagClient interface {
+	ChatStream(ctx context.Context, req ChatRequest) (io.ReadCloser, error)
+	Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error)
+}
+
+type ChatRequest struct {
+	CourseIDs []string      `json:"course_ids"`
+	Query     string        `json:"query"`
+	Stream    bool          `json:"stream"`
+	History   []ChatMessage `json:"history"`
+}
+
+type ChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type ChatResponse struct {
+	Answer    string         `json:"answer"`
+	Citations []CitationItem `json:"citations"`
+}
+
+type CitationItem struct {
+	FileName string   `json:"file_name"`
+	FileID   string   `json:"file_id"`
+	Score    *float64 `json:"score,omitempty"`
+}
