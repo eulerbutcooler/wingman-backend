@@ -3,11 +3,13 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	"github.com/eulerbutcooler/wingman-backend/internal/domain"
 	"github.com/eulerbutcooler/wingman-backend/internal/infra/postgres/gen"
 	"github.com/eulerbutcooler/wingman-backend/internal/port"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -39,6 +41,9 @@ func (r *quizRepo) CreateQuiz(ctx context.Context, quiz *domain.Quiz) error {
 func (r *quizRepo) GetQuizByID(ctx context.Context, id uuid.UUID) (*domain.Quiz, error) {
 	row, err := r.q.GetQuizByID(ctx, id)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 	return toDomainQuiz(row), nil
@@ -50,6 +55,9 @@ func (r *quizRepo) GetQuizByCourseAndDifficulty(ctx context.Context, courseID uu
 		Difficulty: string(difficulty),
 	})
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 	return toDomainQuiz(row), nil
@@ -127,6 +135,9 @@ func (r *quizRepo) ListQuestionsByQuiz(ctx context.Context, quizID uuid.UUID) ([
 func (r *quizRepo) GetQuestionByID(ctx context.Context, id uuid.UUID) (*domain.Question, error) {
 	row, err := r.q.GetQuestionByID(ctx, id)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 	return toDomainQuestion(row)
@@ -157,7 +168,7 @@ func toDomainQuestion(q gen.Question) (*domain.Question, error) {
 
 func (r *quizRepo) CreateAttempt(ctx context.Context, attempt *domain.Attempt) error {
 	row, err := r.q.CreateAttempt(ctx, gen.CreateAttemptParams{
-		QuizID: attempt.ID,
+		QuizID: attempt.QuizID,
 		UserID: attempt.UserID,
 	})
 	if err != nil {
@@ -171,6 +182,9 @@ func (r *quizRepo) CreateAttempt(ctx context.Context, attempt *domain.Attempt) e
 func (r *quizRepo) GetAttemptByID(ctx context.Context, id uuid.UUID) (*domain.Attempt, error) {
 	row, err := r.q.GetAttemptByID(ctx, id)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 	return toDomainAttempt(row), nil

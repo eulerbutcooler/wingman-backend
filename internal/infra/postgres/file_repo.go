@@ -2,11 +2,13 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
 	"github.com/eulerbutcooler/wingman-backend/internal/domain"
 	"github.com/eulerbutcooler/wingman-backend/internal/infra/postgres/gen"
 	"github.com/eulerbutcooler/wingman-backend/internal/port"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -37,6 +39,9 @@ func (r *fileRepo) Create(ctx context.Context, f *domain.FileAsset) error {
 func (r *fileRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.FileAsset, error) {
 	row, err := r.q.GetFileByID(ctx, id)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 	return toDomainFile(row), nil

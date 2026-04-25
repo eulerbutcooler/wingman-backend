@@ -57,10 +57,10 @@ type RAGConfig struct {
 }
 
 type JWTConfig struct {
-	JWTAccessSecret  string `mapstructure:"JWT_ACCESS_SECRET"`
-	JWTRefreshSecret string `mapstructure:"JWT_REFRESH_SECRET"`
-	JWTAccessTTL     string `mapstructure:"JWT_ACCESS_TTL"`
-	JWTRefreshTTL    string `mapstructure:"JWT_REFRESH_TTL"`
+	JWTAccessSecret  string        `mapstructure:"JWT_ACCESS_SECRET"`
+	JWTRefreshSecret string        `mapstructure:"JWT_REFRESH_SECRET"`
+	JWTAccessTTL     time.Duration `mapstructure:"JWT_ACCESS_TTL"`
+	JWTRefreshTTL    time.Duration `mapstructure:"JWT_REFRESH_TTL"`
 }
 
 type LogConfig struct {
@@ -84,8 +84,8 @@ func Load() (*Config, error) {
 	v.SetDefault("MINIO_ENDPOINT", "localhost:9000")
 	v.SetDefault("MINIO_USE_SSL", false)
 	v.SetDefault("MINIO_BUCKET", "course-files")
-	v.SetDefault("JWT_ACCESS_TTL", "15m")
-	v.SetDefault("JWT_REFRESH_TTL", "168h")
+	v.SetDefault("JWT_ACCESS_TTL", 15*time.Minute)
+	v.SetDefault("JWT_REFRESH_TTL", 168*time.Hour)
 	v.SetDefault("LOG_LEVEL", "debug")
 
 	// config file for local dev

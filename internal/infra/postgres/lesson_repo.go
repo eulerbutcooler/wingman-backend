@@ -2,11 +2,13 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
 	"github.com/eulerbutcooler/wingman-backend/internal/domain"
 	"github.com/eulerbutcooler/wingman-backend/internal/infra/postgres/gen"
 	"github.com/eulerbutcooler/wingman-backend/internal/port"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -36,6 +38,9 @@ func (r *lessonRepo) Create(ctx context.Context, l *domain.Lesson) error {
 func (r *lessonRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Lesson, error) {
 	row, err := r.q.GetLessonByID(ctx, id)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 	return toDomainLesson(row), nil
