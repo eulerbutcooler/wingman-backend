@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"io"
+	"log/slog"
 
 	"github.com/Amanyd/backend/internal/domain"
 	"github.com/Amanyd/backend/internal/port"
@@ -68,6 +69,23 @@ func (s *ChatService) SendMessage(ctx context.Context, sessionID, userID uuid.UU
 		return nil, err
 	}
 
+	// Auto-title the session from the first user message via the LLM, replacing
+	// the default "New Chat". Failure is non-fatal: keep the existing title so a
+	// flaky model never blocks the stream.
+	if session.Title == "" || session.Title == "New Chat" {
+		if title, err := s.rag.GenerateTitle(ctx, query); err == nil && title != "" {
+			if err := s.chats.UpdateSessionTitle(ctx, sessionID, title); err != nil {
+				slog.WarnContext(ctx, "chat: update session title failed", "err", err)
+			}
+		} else if err != nil {
+			slog.WarnContext(ctx, "chat: generate title failed", "err", err)
+		}
+	} else {
+		if err := s.chats.TouchSession(ctx, sessionID); err != nil {
+			return nil, err
+		}
+	}
+
 	history := make([]port.ChatMessage, len(messages))
 	for i, m := range messages {
 		history[i] = port.ChatMessage{Role: string(m.Role), Content: m.Content}
@@ -80,8 +98,8 @@ func (s *ChatService) SendMessage(ctx context.Context, sessionID, userID uuid.UU
 
 	stream, err := s.rag.ChatStream(ctx, port.ChatRequest{
 		CourseIDs: ids,
-		Query:    query,
-		History:  history,
+		Query:     query,
+		History:   history,
 	})
 	if err != nil {
 		return nil, err
@@ -92,6 +110,25 @@ func (s *ChatService) SendMessage(ctx context.Context, sessionID, userID uuid.UU
 
 func (s *ChatService) GetHistory(ctx context.Context, sessionID uuid.UUID) ([]domain.Message, error) {
 	return s.chats.ListMessages(ctx, sessionID, 100)
+}
+
+// SaveAssistantMessage persists the model's streamed answer (with citations) so
+// it survives a page refresh. Called by the handler after the SSE stream ends.
+func (s *ChatService) SaveAssistantMessage(
+	ctx context.Context,
+	sessionID uuid.UUID,
+	content string,
+	citations []domain.Citation,
+) error {
+	if content == "" {
+		return nil
+	}
+	return s.chats.CreateMessage(ctx, &domain.Message{
+		SessionID: sessionID,
+		Role:      domain.RoleAssistant,
+		Content:   content,
+		Citations: citations,
+	})
 }
 
 func (s *ChatService) resolveCourseIDs(ctx context.Context, session *domain.ChatSession, userID uuid.UUID) ([]uuid.UUID, error) {

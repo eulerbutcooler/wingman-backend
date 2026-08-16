@@ -2,10 +2,14 @@ package handler
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
+	"github.com/Amanyd/backend/internal/domain"
+	"github.com/Amanyd/backend/internal/port"
 	"github.com/Amanyd/backend/internal/service"
 	"github.com/Amanyd/backend/pkg/apierr"
 	"github.com/Amanyd/backend/pkg/validator"
@@ -103,11 +107,67 @@ func (h *ChatHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	// the first SSE token while the LLM is still generating.
 	flusher.Flush()
 
+	// Tee the stream: forward every SSE frame to the client while accumulating
+	// tokens + citations so the assistant's answer can be persisted for reload.
+	var contentBuilder strings.Builder
+	var citations []domain.Citation
+
 	scanner := bufio.NewScanner(stream)
 	for scanner.Scan() {
-		fmt.Fprintf(w, "%s\n", scanner.Text())
+		line := scanner.Text()
+		fmt.Fprintf(w, "%s\n", line)
 		flusher.Flush()
+
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "data:") {
+			continue
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
+		if payload == "[DONE]" {
+			continue
+		}
+
+		var frame map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(payload), &frame); err != nil {
+			continue
+		}
+		if tk, ok := frame["token"]; ok {
+			var token string
+			if json.Unmarshal(tk, &token) == nil {
+				contentBuilder.WriteString(token)
+			}
+		}
+		if c, ok := frame["citations"]; ok {
+			var items []port.CitationItem
+			if json.Unmarshal(c, &items) == nil {
+				citations = toDomainCitations(items)
+			}
+		}
 	}
+
+	// Persist the assistant message after the stream closes. Use a detached
+	// context so saving still succeeds even if the client disconnects mid-stream.
+	_ = h.svc.SaveAssistantMessage(
+		context.Background(),
+		sessionID,
+		contentBuilder.String(),
+		citations,
+	)
+}
+
+func toDomainCitations(items []port.CitationItem) []domain.Citation {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]domain.Citation, len(items))
+	for i, it := range items {
+		out[i] = domain.Citation{
+			FileName: it.FileName,
+			FileID:   it.FileID,
+			Score:    it.Score,
+		}
+	}
+	return out
 }
 
 func (h *ChatHandler) GetHistory(w http.ResponseWriter, r *http.Request) {

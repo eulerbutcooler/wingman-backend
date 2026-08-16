@@ -9,10 +9,12 @@ SELECT
     $1::uuid AS course_id,
     (SELECT COUNT(DISTINCT a.user_id) FROM attempts a
      JOIN quizzes q ON q.id = a.quiz_id
-     WHERE q.course_id = $1) AS total_students,
+     JOIN users u ON u.id = a.user_id
+     WHERE q.course_id = $1 AND u.role = 'student') AS total_students,
     (SELECT COALESCE(AVG(a.score), 0) FROM attempts a
      JOIN quizzes q ON q.id = a.quiz_id
-     WHERE q.course_id = $1 AND a.ended_at IS NOT NULL) AS avg_quiz_score,
+     JOIN users u ON u.id = a.user_id
+     WHERE q.course_id = $1 AND a.ended_at IS NOT NULL AND u.role = 'student') AS avg_quiz_score,
     (SELECT COUNT(*) FROM chat_messages cm
      JOIN chat_sessions cs ON cs.id = cm.session_id
      WHERE cs.course_id = $1) AS total_messages,
@@ -28,7 +30,7 @@ SELECT
 FROM users u
 JOIN attempts a ON a.user_id = u.id
 JOIN quizzes q ON q.id = a.quiz_id
-WHERE q.course_id = $1 AND a.ended_at IS NOT NULL
+WHERE q.course_id = $1 AND a.ended_at IS NOT NULL AND u.role = 'student'
 GROUP BY u.id, u.name, u.rank
 ORDER BY avg_score DESC;
 
@@ -37,10 +39,12 @@ SELECT
     (SELECT COUNT(DISTINCT a.user_id) FROM attempts a
      JOIN quizzes q ON q.id = a.quiz_id
      JOIN courses c ON c.id = q.course_id
-     WHERE c.instructor_id = $1) AS total_students,
+     JOIN users u ON u.id = a.user_id
+     WHERE c.instructor_id = $1 AND u.role = 'student') AS total_students,
     (SELECT COUNT(*) FROM courses
      WHERE instructor_id = $1) AS total_courses,
     (SELECT COALESCE(AVG(a.score), 0) FROM attempts a
      JOIN quizzes q ON q.id = a.quiz_id
      JOIN courses c ON c.id = q.course_id
-     WHERE c.instructor_id = $1 AND a.ended_at IS NOT NULL) AS avg_score;
+     JOIN users u ON u.id = a.user_id
+     WHERE c.instructor_id = $1 AND a.ended_at IS NOT NULL AND u.role = 'student') AS avg_score;

@@ -89,13 +89,49 @@ func (c *ragClient) GradeAnswer(ctx context.Context, req port.GradeRequest) (*po
 	return &gradeResp, nil
 }
 
+func (c *ragClient) GenerateTitle(ctx context.Context, message string) (string, error) {
+	payload, err := json.Marshal(port.TitleRequest{Message: message})
+	if err != nil {
+		return "", fmt.Errorf("rag marshal title request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		c.baseURL+"/api/v1/chat/title",
+		bytes.NewReader(payload),
+	)
+	if err != nil {
+		return "", fmt.Errorf("rag new title request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-Internal-Token", c.token)
+
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return "", fmt.Errorf("rag title http do: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("rag title unexpected status: %d", resp.StatusCode)
+	}
+
+	var titleResp port.TitleResponse
+	if err := json.NewDecoder(resp.Body).Decode(&titleResp); err != nil {
+		return "", fmt.Errorf("rag decode title response: %w", err)
+	}
+	return titleResp.Title, nil
+}
+
 func (c *ragClient) doRequest(ctx context.Context, req port.ChatRequest, stream bool) (io.ReadCloser, error) {
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("rag marshal request: %w", err)
 	}
 
-	httpReq, err := 		http.NewRequestWithContext(
+	httpReq, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
 		c.baseURL+"/api/v1/chat/",

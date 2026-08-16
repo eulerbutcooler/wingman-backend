@@ -13,4 +13,6 @@ type ChatRepository interface {
 	ListSessionsByUser(ctx context.Context, userID uuid.UUID) ([]domain.ChatSession, error)
 	CreateMessage(ctx context.Context, msg *domain.Message) error
 	ListMessages(ctx context.Context, sessionID uuid.UUID, limit int) ([]domain.Message, error)
+	UpdateSessionTitle(ctx context.Context, id uuid.UUID, title string) error
+	TouchSession(ctx context.Context, id uuid.UUID) error
 }

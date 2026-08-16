@@ -9,6 +9,12 @@ SELECT * from chat_sessions WHERE id = $1;
 -- name: ListChatSessionsByUser :many
 SELECT * FROM chat_sessions WHERE user_id = $1 ORDER BY updated_at DESC;
 
+-- name: UpdateChatSessionTitle :exec
+UPDATE chat_sessions SET title = $1, updated_at = now() WHERE id = $2;
+
+-- name: TouchChatSession :exec
+UPDATE chat_sessions SET updated_at = now() WHERE id = $1;
+
 -- name: CreateMessage :one
 INSERT INTO chat_messages (session_id, role, content, citations)
 VALUES ($1, $2, $3, $4)

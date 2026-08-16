@@ -98,6 +98,17 @@ func (r *chatRepo) ListMessages(ctx context.Context, sessionID uuid.UUID, limit 
 	return messages, nil
 }
 
+func (r *chatRepo) UpdateSessionTitle(ctx context.Context, id uuid.UUID, title string) error {
+	return r.q.UpdateChatSessionTitle(ctx, gen.UpdateChatSessionTitleParams{
+		Title: title,
+		ID:    id,
+	})
+}
+
+func (r *chatRepo) TouchSession(ctx context.Context, id uuid.UUID) error {
+	return r.q.TouchChatSession(ctx, id)
+}
+
 func toDomainSession(s gen.ChatSession) *domain.ChatSession {
 	var courseID *uuid.UUID
 	if s.CourseID.Valid {

@@ -9,6 +9,7 @@ type RagClient interface {
 	ChatStream(ctx context.Context, req ChatRequest) (io.ReadCloser, error)
 	Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error)
 	GradeAnswer(ctx context.Context, req GradeRequest) (*GradeResponse, error)
+	GenerateTitle(ctx context.Context, message string) (string, error)
 }
 
 type ChatRequest struct {
@@ -44,4 +45,12 @@ type GradeResponse struct {
 	IsCorrect   bool    `json:"is_correct"`
 	Score       float64 `json:"score"`
 	Explanation string  `json:"explanation"`
+}
+
+type TitleRequest struct {
+	Message string `json:"message"`
+}
+
+type TitleResponse struct {
+	Title string `json:"title"`
 }
