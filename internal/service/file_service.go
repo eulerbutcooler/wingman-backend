@@ -12,6 +12,14 @@ import (
 
 const viewURLExpiry = 1 * time.Hour
 
+// Cache keys used by FileService. Exported so other components (e.g. the
+// ingest-done worker) can invalidate the same entries after writes instead
+// of serving stale data until the TTL expires.
+const (
+	CacheKeyFileStatus  = "file:status:"
+	CacheKeyFilesLesson = "files:lesson:"
+)
+
 type FileService struct {
 	files   port.FileRepository
 	storage port.ObjectStorage
@@ -23,7 +31,7 @@ func NewFileService(files port.FileRepository, storage port.ObjectStorage, cache
 }
 
 func (s *FileService) GetIngestStatus(ctx context.Context, fileID uuid.UUID) (domain.IngestStatus, error) {
-	key := "file:status:" + fileID.String()
+	key := CacheKeyFileStatus + fileID.String()
 
 	if cached, err := s.cache.Get(ctx, key); err == nil {
 		return domain.IngestStatus(cached), nil
@@ -47,7 +55,7 @@ func (s *FileService) GetViewURL(ctx context.Context, fileID uuid.UUID) (string,
 }
 
 func (s *FileService) ListByLesson(ctx context.Context, lessonID uuid.UUID) ([]domain.FileAsset, error) {
-	key := "files:lesson:" + lessonID.String()
+	key := CacheKeyFilesLesson + lessonID.String()
 
 	if cached, err := s.cache.Get(ctx, key); err == nil {
 		var files []domain.FileAsset

@@ -8,6 +8,7 @@ import (
 	"github.com/Amanyd/backend/internal/domain"
 	"github.com/Amanyd/backend/internal/infra/nats"
 	"github.com/Amanyd/backend/internal/port"
+	"github.com/Amanyd/backend/internal/service"
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go/jetstream"
 	"go.uber.org/zap"
@@ -16,6 +17,7 @@ import (
 type IngestDoneWorkerDeps struct {
 	Files   port.FileRepository
 	Lessons port.LessonRepository
+	Cache   port.Cache
 }
 
 func StartIngestDoneWorker(ctx context.Context, js jetstream.JetStream, deps IngestDoneWorkerDeps, log *zap.Logger) error {
@@ -46,8 +48,8 @@ func StartIngestDoneWorker(ctx context.Context, js jetstream.JetStream, deps Ing
 }
 
 type ingestDonePayload struct {
-	Status  string `json:"status"`
-	FileID  string `json:"file_id"`
+	Status string `json:"status"`
+	FileID string `json:"file_id"`
 }
 
 func handleIngestDone(ctx context.Context, msg jetstream.Msg, deps IngestDoneWorkerDeps, log *zap.Logger) error {
@@ -65,18 +67,33 @@ func handleIngestDone(ctx context.Context, msg jetstream.Msg, deps IngestDoneWor
 		return nil
 	}
 
+	status := domain.IngestReady
 	if payload.Status != "success" {
 		log.Info("ingest_done failed", zap.String("file_id", payload.FileID))
-		return deps.Files.UpdateIngestStatus(ctx, fileID, domain.IngestFailed)
+		status = domain.IngestFailed
 	}
 
-	if err := deps.Files.UpdateIngestStatus(ctx, fileID, domain.IngestReady); err != nil {
+	if err := deps.Files.UpdateIngestStatus(ctx, fileID, status); err != nil {
 		return fmt.Errorf("update file status: %w", err)
 	}
 
+	// Fetch the file to resolve its lesson id for cache invalidation (and the
+	// all-ready check below). A missing file is non-fatal: the DB status is
+	// already updated, and the per-file status cache can still be invalidated.
 	file, err := deps.Files.GetByID(ctx, fileID)
 	if err != nil {
-		return fmt.Errorf("get file: %w", err)
+		log.Warn("ingest_done get file for cache invalidation", zap.Error(err))
+		invalidateFileCaches(ctx, deps.Cache, fileID, uuid.Nil)
+		return nil
+	}
+
+	// Invalidate the caches FileService serves so the status and list endpoints
+	// reflect the new state immediately instead of returning stale entries
+	// until their TTLs expire (30s for status, 2m for the lesson list).
+	invalidateFileCaches(ctx, deps.Cache, fileID, file.LessonID)
+
+	if status != domain.IngestReady {
+		return nil
 	}
 
 	lesson, err := deps.Lessons.GetByID(ctx, file.LessonID)
@@ -95,4 +112,17 @@ func handleIngestDone(ctx context.Context, msg jetstream.Msg, deps IngestDoneWor
 	}
 
 	return nil
+}
+
+// invalidateFileCaches drops the per-file status and per-lesson list cache
+// entries so readers see the freshly written ingest status. Failures are
+// ignored: a stale entry will still expire by its TTL.
+func invalidateFileCaches(ctx context.Context, c port.Cache, fileID, lessonID uuid.UUID) {
+	if c == nil {
+		return
+	}
+	_ = c.Delete(ctx, service.CacheKeyFileStatus+fileID.String())
+	if lessonID != uuid.Nil {
+		_ = c.Delete(ctx, service.CacheKeyFilesLesson+lessonID.String())
+	}
 }
