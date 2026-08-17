@@ -64,5 +64,6 @@ services:
 volumes:
   qdrant_data:
   minio_data:
+  nats_data:
   postgres_data:
   redis_data:
