@@ -40,6 +40,8 @@ services:
       - "4222:4222"
       - "8222:8222"
     command: -js
+    volumes:
+      - nats_data:/data
 
   postgres:
     image: postgres:15-alpine
