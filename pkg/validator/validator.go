@@ -11,14 +11,26 @@ import (
 var validate *validator.Validate
 
 var validRanks = map[string]bool{
-	"officer":  true,
-	"agniveer": true,
+	"officer":              true,
+	"agniveer":             true,
+	"sub_lieutenant":       true,
+	"lieutenant":           true,
+	"lieutenant_commander": true,
+	"commander":            true,
+	"captain":              true,
+	"commodore":            true,
+	"rear_admiral":         true,
+	"vice_admiral":         true,
+	"admiral":              true,
 }
 
 func init() {
 	validate = validator.New()
 	validate.RegisterValidation("rank", func(fl validator.FieldLevel) bool {
-		return validRanks[fl.Field().String()]
+		val := strings.ToLower(strings.TrimSpace(fl.Field().String()))
+		val = strings.ReplaceAll(val, " ", "_")
+		val = strings.ReplaceAll(val, "-", "_")
+		return validRanks[val] || validRanks[fl.Field().String()]
 	})
 
 	validate.RegisterTagNameFunc(func(fld reflect.StructField) string {

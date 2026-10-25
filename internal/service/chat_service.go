@@ -109,19 +109,16 @@ func (s *ChatService) resolveCourseIDs(ctx context.Context, session *domain.Chat
 		return []uuid.UUID{*session.CourseID}, nil
 	}
 
-	user, err := s.users.GetByID(ctx, userID)
+	courses, err := s.courses.ListAll(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	courses, err := s.courses.ListByRank(ctx, user.Rank)
-	if err != nil {
-		return nil, err
-	}
-
-	ids := make([]uuid.UUID, len(courses))
-	for i, c := range courses {
-		ids[i] = c.ID
+	ids := make([]uuid.UUID, 0, len(courses))
+	for _, c := range courses {
+		if c.Published {
+			ids = append(ids, c.ID)
+		}
 	}
 	return ids, nil
 }

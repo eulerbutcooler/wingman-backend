@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/Amanyd/backend/internal/domain"
 	"github.com/Amanyd/backend/internal/service"
 	"github.com/Amanyd/backend/pkg/apierr"
 	"github.com/Amanyd/backend/pkg/validator"
@@ -18,7 +19,7 @@ type CourseHandler struct {
 type createCourseRequest struct {
 	Title       string `json:"title"       validate:"required,min=2"`
 	Description string `json:"description" validate:"required"`
-	Rank        string `json:"rank"        validate:"required,rank"`
+	Rank        string `json:"rank"`
 }
 
 func (h *CourseHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -30,6 +31,10 @@ func (h *CourseHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if err := validator.ValidateStruct(req); err != nil {
 		apierr.WriteJSON(w, err)
 		return
+	}
+
+	if req.Rank == "" {
+		req.Rank = "officer"
 	}
 
 	claims := GetClaims(r)
@@ -60,26 +65,30 @@ func (h *CourseHandler) Get(w http.ResponseWriter, r *http.Request) {
 func (h *CourseHandler) List(w http.ResponseWriter, r *http.Request) {
 	claims := GetClaims(r)
 
-	var courses interface{}
-	var err error
-
-	if claims.Role == "instructor" {
-		courses, err = h.svc.ListAll(r.Context())
-	} else {
-		courses, err = h.svc.ListByRank(r.Context(), claims.Rank)
-	}
-
+	allCourses, err := h.svc.ListAll(r.Context())
 	if err != nil {
 		apierr.WriteJSON(w, mapDomainError(err))
 		return
 	}
-	apierr.WriteData(w, http.StatusOK, courses)
+
+	if claims.Role == "instructor" {
+		apierr.WriteData(w, http.StatusOK, allCourses)
+		return
+	}
+
+	published := make([]domain.Course, 0, len(allCourses))
+	for _, c := range allCourses {
+		if c.Published {
+			published = append(published, c)
+		}
+	}
+	apierr.WriteData(w, http.StatusOK, published)
 }
 
 type updateCourseRequest struct {
 	Title       string `json:"title"       validate:"required,min=2"`
 	Description string `json:"description" validate:"required"`
-	Rank        string `json:"rank"        validate:"required,rank"`
+	Rank        string `json:"rank"`
 }
 
 func (h *CourseHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -97,6 +106,10 @@ func (h *CourseHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if err := validator.ValidateStruct(req); err != nil {
 		apierr.WriteJSON(w, err)
 		return
+	}
+
+	if req.Rank == "" {
+		req.Rank = "officer"
 	}
 
 	claims := GetClaims(r)

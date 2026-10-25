@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Amanyd/backend/internal/port"
@@ -28,11 +29,19 @@ func (s *storage) PresignUpload(ctx context.Context, key string, expiry time.Dur
 	return u.String(), nil
 }
 
-func (s *storage) PresignView(ctx context.Context, key string, expiry time.Duration) (string, error) {
+func (s *storage) PresignView(ctx context.Context, key string, fileName string, expiry time.Duration) (string, error) {
 	reqParams := make(url.Values)
-	reqParams.Set("response-content-disposition", "inline")
+	if fileName != "" {
+		reqParams.Set("response-content-disposition", fmt.Sprintf("inline; filename=%q", fileName))
+	} else {
+		reqParams.Set("response-content-disposition", "inline")
+	}
 	
-	ext := filepath.Ext(key)
+	ext := strings.ToLower(filepath.Ext(fileName))
+	if ext == "" {
+		ext = strings.ToLower(filepath.Ext(key))
+	}
+
 	if ext == ".pdf" {
 		reqParams.Set("response-content-type", "application/pdf")
 	} else if ext == ".docx" {

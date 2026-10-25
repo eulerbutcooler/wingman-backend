@@ -43,7 +43,7 @@ func (s *FileService) GetViewURL(ctx context.Context, fileID uuid.UUID) (string,
 	if err != nil {
 		return "", err
 	}
-	return s.storage.PresignView(ctx, file.MinioKey, viewURLExpiry)
+	return s.storage.PresignView(ctx, file.MinioKey, file.FileName, viewURLExpiry)
 }
 
 func (s *FileService) ListByLesson(ctx context.Context, lessonID uuid.UUID) ([]domain.FileAsset, error) {
