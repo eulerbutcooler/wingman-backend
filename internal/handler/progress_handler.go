@@ -42,6 +42,10 @@ func (h *ProgressHandler) MarkFileViewed(w http.ResponseWriter, r *http.Request)
 	}
 
 	claims := GetClaims(r)
+	if claims.Role != "student" {
+		apierr.WriteData(w, http.StatusOK, map[string]string{"status": "ok"})
+		return
+	}
 	if err := h.svc.MarkFileViewed(r.Context(), claims.UserID, fileID); err != nil {
 		apierr.WriteJSON(w, mapDomainError(err))
 		return
@@ -58,6 +62,10 @@ func (h *ProgressHandler) MarkLessonComplete(w http.ResponseWriter, r *http.Requ
 	}
 
 	claims := GetClaims(r)
+	if claims.Role != "student" {
+		apierr.WriteData(w, http.StatusOK, map[string]string{"status": "ok"})
+		return
+	}
 	if err := h.svc.MarkLessonComplete(r.Context(), claims.UserID, lessonID); err != nil {
 		apierr.WriteJSON(w, mapDomainError(err))
 		return
@@ -74,6 +82,10 @@ func (h *ProgressHandler) MarkCourseComplete(w http.ResponseWriter, r *http.Requ
 	}
 
 	claims := GetClaims(r)
+	if claims.Role != "student" {
+		apierr.WriteData(w, http.StatusOK, map[string]string{"status": "ok"})
+		return
+	}
 	if err := h.svc.MarkCourseComplete(r.Context(), claims.UserID, courseID); err != nil {
 		apierr.WriteJSON(w, mapDomainError(err))
 		return

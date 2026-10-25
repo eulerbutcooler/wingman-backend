@@ -72,7 +72,7 @@ func (q *Queries) CreateAttempt(ctx context.Context, arg CreateAttemptParams) (A
 const createQuestion = `-- name: CreateQuestion :one
 INSERT INTO questions (quiz_id, type, question, choices, answer, order_idx)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, quiz_id, type, question, choices, answer, order_idx
+RETURNING id, quiz_id, type, question, choices, answer, order_idx, topic_id, explanation, difficulty, topic_phrase
 `
 
 type CreateQuestionParams struct {
@@ -102,6 +102,10 @@ func (q *Queries) CreateQuestion(ctx context.Context, arg CreateQuestionParams) 
 		&i.Choices,
 		&i.Answer,
 		&i.OrderIdx,
+		&i.TopicID,
+		&i.Explanation,
+		&i.Difficulty,
+		&i.TopicPhrase,
 	)
 	return i, err
 }
@@ -177,7 +181,7 @@ func (q *Queries) GetAttemptByID(ctx context.Context, id uuid.UUID) (Attempt, er
 }
 
 const getQuestionByID = `-- name: GetQuestionByID :one
-SELECT id, quiz_id, type, question, choices, answer, order_idx FROM questions WHERE id = $1
+SELECT id, quiz_id, type, question, choices, answer, order_idx, topic_id, explanation, difficulty, topic_phrase FROM questions WHERE id = $1
 `
 
 func (q *Queries) GetQuestionByID(ctx context.Context, id uuid.UUID) (Question, error) {
@@ -191,6 +195,10 @@ func (q *Queries) GetQuestionByID(ctx context.Context, id uuid.UUID) (Question, 
 		&i.Choices,
 		&i.Answer,
 		&i.OrderIdx,
+		&i.TopicID,
+		&i.Explanation,
+		&i.Difficulty,
+		&i.TopicPhrase,
 	)
 	return i, err
 }
@@ -293,7 +301,7 @@ func (q *Queries) ListAnswersByAttempt(ctx context.Context, attemptID uuid.UUID)
 }
 
 const listQuestionsByQuiz = `-- name: ListQuestionsByQuiz :many
-SELECT id, quiz_id, type, question, choices, answer, order_idx FROM questions WHERE quiz_id = $1 ORDER BY order_idx ASC
+SELECT id, quiz_id, type, question, choices, answer, order_idx, topic_id, explanation, difficulty, topic_phrase FROM questions WHERE quiz_id = $1 ORDER BY order_idx ASC
 `
 
 func (q *Queries) ListQuestionsByQuiz(ctx context.Context, quizID uuid.UUID) ([]Question, error) {
@@ -313,6 +321,10 @@ func (q *Queries) ListQuestionsByQuiz(ctx context.Context, quizID uuid.UUID) ([]
 			&i.Choices,
 			&i.Answer,
 			&i.OrderIdx,
+			&i.TopicID,
+			&i.Explanation,
+			&i.Difficulty,
+			&i.TopicPhrase,
 		); err != nil {
 			return nil, err
 		}

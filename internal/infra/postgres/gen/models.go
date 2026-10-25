@@ -88,14 +88,28 @@ type Lesson struct {
 	Keywords  []byte    `json:"keywords"`
 }
 
+type LessonTopic struct {
+	ID         uuid.UUID `json:"id"`
+	LessonID   uuid.UUID `json:"lesson_id"`
+	Title      string    `json:"title"`
+	OrderIndex int32     `json:"order_index"`
+	Slides     []byte    `json:"slides"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
 type Question struct {
-	ID       uuid.UUID `json:"id"`
-	QuizID   uuid.UUID `json:"quiz_id"`
-	Type     string    `json:"type"`
-	Question string    `json:"question"`
-	Choices  []byte    `json:"choices"`
-	Answer   string    `json:"answer"`
-	OrderIdx int32     `json:"order_idx"`
+	ID          uuid.UUID   `json:"id"`
+	QuizID      uuid.UUID   `json:"quiz_id"`
+	Type        string      `json:"type"`
+	Question    string      `json:"question"`
+	Choices     []byte      `json:"choices"`
+	Answer      string      `json:"answer"`
+	OrderIdx    int32       `json:"order_idx"`
+	TopicID     pgtype.UUID `json:"topic_id"`
+	Explanation pgtype.Text `json:"explanation"`
+	Difficulty  pgtype.Text `json:"difficulty"`
+	TopicPhrase pgtype.Text `json:"topic_phrase"`
 }
 
 type Quiz struct {
