@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/Amanyd/backend/internal/domain"
@@ -14,8 +15,9 @@ import (
 )
 
 type IngestDoneWorkerDeps struct {
-	Files   port.FileRepository
-	Lessons port.LessonRepository
+	Files     port.FileRepository
+	Lessons   port.LessonRepository
+	RagClient port.RagClient
 }
 
 func StartIngestDoneWorker(ctx context.Context, js jetstream.JetStream, deps IngestDoneWorkerDeps, log *zap.Logger) error {
@@ -46,8 +48,8 @@ func StartIngestDoneWorker(ctx context.Context, js jetstream.JetStream, deps Ing
 }
 
 type ingestDonePayload struct {
-	Status  string `json:"status"`
-	FileID  string `json:"file_id"`
+	Status string `json:"status"`
+	FileID string `json:"file_id"`
 }
 
 func handleIngestDone(ctx context.Context, msg jetstream.Msg, deps IngestDoneWorkerDeps, log *zap.Logger) error {
@@ -65,18 +67,31 @@ func handleIngestDone(ctx context.Context, msg jetstream.Msg, deps IngestDoneWor
 		return nil
 	}
 
+	status := domain.IngestReady
 	if payload.Status != "success" {
 		log.Info("ingest_done failed", zap.String("file_id", payload.FileID))
-		return deps.Files.UpdateIngestStatus(ctx, fileID, domain.IngestFailed)
+		status = domain.IngestFailed
 	}
 
-	if err := deps.Files.UpdateIngestStatus(ctx, fileID, domain.IngestReady); err != nil {
+	if err := deps.Files.UpdateIngestStatus(ctx, fileID, status); err != nil {
 		return fmt.Errorf("update file status: %w", err)
 	}
 
 	file, err := deps.Files.GetByID(ctx, fileID)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			// The instructor deleted the file while it was still being
+			// processed. The ingest worker may have inserted vectors after the
+			// delete endpoint ran, so clean them up now.
+			log.Info("ingest_done file was deleted; cleaning up vectors", zap.String("file_id", payload.FileID))
+			cleanupDeletedFileVectors(ctx, deps, payload.FileID, log)
+			return nil
+		}
 		return fmt.Errorf("get file: %w", err)
+	}
+
+	if status != domain.IngestReady {
+		return nil
 	}
 
 	lesson, err := deps.Lessons.GetByID(ctx, file.LessonID)
@@ -95,4 +110,17 @@ func handleIngestDone(ctx context.Context, msg jetstream.Msg, deps IngestDoneWor
 	}
 
 	return nil
+}
+
+func cleanupDeletedFileVectors(ctx context.Context, deps IngestDoneWorkerDeps, fileID string, log *zap.Logger) {
+	if deps.RagClient == nil {
+		return
+	}
+	if err := deps.RagClient.DeleteFileVectors(ctx, fileID); err != nil {
+		log.Warn(
+			"ingest_done vector cleanup failed",
+			zap.String("file_id", fileID),
+			zap.Error(err),
+		)
+	}
 }

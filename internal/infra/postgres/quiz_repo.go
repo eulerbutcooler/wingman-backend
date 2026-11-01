@@ -204,6 +204,29 @@ func (r *quizRepo) ListQuestionsByQuiz(ctx context.Context, quizID uuid.UUID) ([
 	return r.scanQuestions(rows)
 }
 
+func (r *quizRepo) ListQuestionsByCourse(
+	ctx context.Context,
+	courseID uuid.UUID,
+) ([]domain.Question, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT q.id, q.quiz_id, q.type, q.question, q.choices, q.answer,
+		       q.order_idx, q.explanation, q.difficulty, q.topic_phrase
+		FROM questions q
+		JOIN quizzes qz ON qz.id = q.quiz_id
+		WHERE qz.course_id = $1
+		ORDER BY
+			CASE q.difficulty WHEN 'easy' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
+			COALESCE(NULLIF(q.topic_phrase, ''), q.question),
+			q.order_idx
+	`, courseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return r.scanQuestions(rows)
+}
+
 func (r *quizRepo) SampleQuestionsByQuiz(ctx context.Context, quizID uuid.UUID, limit int) ([]domain.Question, error) {
 	// Pick 1 easy question per topic from the question bank.
 	// If limit > 0, cap the total questions returned; otherwise return 1 per topic for all topics.

@@ -58,6 +58,7 @@ type quizDonePayload struct {
 	Status     string        `json:"status"`
 	CourseID   string        `json:"course_id"`
 	LessonID   string        `json:"lesson_id,omitempty"`
+	QuizID     string        `json:"quiz_id,omitempty"`
 	Difficulty string        `json:"difficulty"`
 	Keywords   []string      `json:"keywords,omitempty"`
 	Questions  []rawQuestion `json:"questions"`
@@ -87,6 +88,18 @@ func handleQuizDone(ctx context.Context, msg jetstream.Msg, deps QuizDoneWorkerD
 		log.Warn("quiz_done bad course_id, dropping", zap.String("course_id", payload.CourseID))
 		msg.Ack()
 		return nil
+	}
+
+	// Idempotency: if the same quiz completion is redelivered after it was
+	// already applied, do not save topics/questions again.
+	if payload.QuizID != "" {
+		if quizID, parseErr := uuid.Parse(payload.QuizID); parseErr == nil {
+			if existing, getErr := deps.Quizzes.GetQuizByID(ctx, quizID); getErr == nil &&
+				existing.Status == domain.QuizReady {
+				log.Info("quiz_done already ready, skipping", zap.String("quiz_id", payload.QuizID))
+				return nil
+			}
+		}
 	}
 
 	difficulty := domain.Difficulty(payload.Difficulty)
@@ -147,6 +160,15 @@ func handleQuizDone(ctx context.Context, msg jetstream.Msg, deps QuizDoneWorkerD
 	}
 
 	if payload.Status != "success" {
+		// A late failure notification must not overwrite a quiz that already
+		// completed successfully (e.g. publish timeout after a good run).
+		if quiz.Status == domain.QuizReady {
+			log.Info(
+				"quiz_done late failure ignored, quiz already ready",
+				zap.String("quiz_id", quiz.ID.String()),
+			)
+			return nil
+		}
 		log.Info("quiz_done failed", zap.String("course_id", payload.CourseID), zap.String("type", payload.Type))
 		if deps.Cache != nil {
 			_ = deps.Cache.Delete(ctx, "quizzes:course:"+courseID.String())
@@ -224,14 +246,14 @@ func handleQuizDone(ctx context.Context, msg jetstream.Msg, deps QuizDoneWorkerD
 		// Only trigger course quizzes if all lesson quizzes are ready AND course quizzes don't already exist
 		if hasLessons && allReady && !hasCourseQuizzes {
 			log.Info("All lesson quizzes ready. Triggering course quizzes.", zap.String("course_id", courseID.String()))
-			
+
 			// Fetch all lessons for the course to get their keywords
 			lessons, err := deps.Lessons.ListByCourse(ctx, courseID)
 			if err != nil {
 				log.Error("failed to list lessons for saga", zap.Error(err))
 				// We can continue, just won't have keywords
 			}
-			
+
 			var allKeywords []string
 			for _, lesson := range lessons {
 				if len(lesson.Keywords) > 0 {

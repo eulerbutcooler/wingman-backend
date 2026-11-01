@@ -18,9 +18,10 @@ const (
 type FileType string
 
 const (
-	FileTypePDF  FileType = "pdf"
-	FileTypePPT  FileType = "ppt"
-	FileTypeDOCX FileType = "docx"
+	FileTypePDF   FileType = "pdf"
+	FileTypePPT   FileType = "ppt"
+	FileTypeDOCX  FileType = "docx"
+	FileTypeVideo FileType = "video"
 )
 
 type FileAsset struct {

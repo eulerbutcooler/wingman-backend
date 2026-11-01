@@ -10,6 +10,7 @@ import (
 	"github.com/Amanyd/backend/internal/port"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -37,8 +38,40 @@ func (r *lessonRepo) Create(ctx context.Context, l *domain.Lesson) error {
 	return nil
 }
 
+func (r *lessonRepo) CreateSyllabusLesson(ctx context.Context, l *domain.Lesson) error {
+	var rowIndex pgtype.Int4
+	if l.SyllabusRowIndex != nil {
+		rowIndex = pgtype.Int4{Int32: int32(*l.SyllabusRowIndex), Valid: true}
+	}
+	row, err := r.q.CreateSyllabusLesson(ctx, gen.CreateSyllabusLessonParams{
+		CourseID:         l.CourseID,
+		Title:            l.Title,
+		OrderIdx:         int32(l.OrderIdx),
+		SyllabusRowIndex: rowIndex,
+	})
+	if err != nil {
+		return err
+	}
+	*l = *toDomainLesson(row)
+	return nil
+}
+
 func (r *lessonRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Lesson, error) {
 	row, err := r.q.GetLessonByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	return toDomainLesson(row), nil
+}
+
+func (r *lessonRepo) GetMaterialsLesson(
+	ctx context.Context,
+	courseID uuid.UUID,
+) (*domain.Lesson, error) {
+	row, err := r.q.GetMaterialsLesson(ctx, courseID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, domain.ErrNotFound
@@ -60,6 +93,38 @@ func (r *lessonRepo) ListByCourse(ctx context.Context, courseID uuid.UUID) ([]do
 	return lessons, nil
 }
 
+func (r *lessonRepo) ListAllByCourse(
+	ctx context.Context,
+	courseID uuid.UUID,
+) ([]domain.Lesson, error) {
+	rows, err := r.q.ListAllLessonsByCourse(ctx, courseID)
+	if err != nil {
+		return nil, err
+	}
+	lessons := make([]domain.Lesson, len(rows))
+	for i, row := range rows {
+		lessons[i] = *toDomainLesson(row)
+	}
+	return lessons, nil
+}
+
+func (r *lessonRepo) ListLessonPlanBacklog(
+	ctx context.Context,
+) ([]domain.LessonPlanBacklogItem, error) {
+	rows, err := r.q.ListLessonPlanBacklog(ctx)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]domain.LessonPlanBacklogItem, len(rows))
+	for i, row := range rows {
+		items[i] = domain.LessonPlanBacklogItem{
+			CourseID:     row.CourseID,
+			InstructorID: row.InstructorID,
+		}
+	}
+	return items, nil
+}
+
 func (r *lessonRepo) Update(ctx context.Context, l *domain.Lesson) error {
 	row, err := r.q.UpdateLesson(ctx, gen.UpdateLessonParams{
 		ID:       l.ID,
@@ -79,6 +144,38 @@ func (r *lessonRepo) UpdateKeywords(ctx context.Context, id uuid.UUID, keywords 
 		Keywords: keywords,
 	})
 	return err
+}
+
+func (r *lessonRepo) SetCourseLessonPlanStatus(
+	ctx context.Context,
+	courseID uuid.UUID,
+	status string,
+	errMsg string,
+) error {
+	return r.q.SetCourseLessonPlanStatus(ctx, gen.SetCourseLessonPlanStatusParams{
+		CourseID:         courseID,
+		LessonPlanStatus: status,
+		Column3:          errMsg,
+	})
+}
+
+func (r *lessonRepo) UpdateLessonPlan(
+	ctx context.Context,
+	lessonID uuid.UUID,
+	key string,
+	status string,
+	errMsg string,
+) (*domain.Lesson, error) {
+	row, err := r.q.UpdateLessonPlan(ctx, gen.UpdateLessonPlanParams{
+		ID:               lessonID,
+		LessonPlanKey:    pgtype.Text{String: key, Valid: key != ""},
+		LessonPlanStatus: status,
+		Column4:          errMsg,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return toDomainLesson(row), nil
 }
 
 func (r *lessonRepo) Delete(ctx context.Context, id uuid.UUID) error {
@@ -132,13 +229,25 @@ func (r *lessonRepo) ListTopicsByLesson(ctx context.Context, lessonID uuid.UUID)
 }
 
 func toDomainLesson(l gen.Lesson) *domain.Lesson {
-	return &domain.Lesson{
-		ID:        l.ID,
-		CourseID:  l.CourseID,
-		Title:     l.Title,
-		OrderIdx:  int(l.OrderIdx),
-		Keywords:  l.Keywords,
-		CreatedAt: l.CreatedAt,
-		UpdatedAt: l.UpdatedAt,
+	lesson := &domain.Lesson{
+		ID:               l.ID,
+		CourseID:         l.CourseID,
+		Title:            l.Title,
+		OrderIdx:         int(l.OrderIdx),
+		Keywords:         l.Keywords,
+		LessonPlanStatus: l.LessonPlanStatus,
+		CreatedAt:        l.CreatedAt,
+		UpdatedAt:        l.UpdatedAt,
 	}
+	if l.SyllabusRowIndex.Valid {
+		index := int(l.SyllabusRowIndex.Int32)
+		lesson.SyllabusRowIndex = &index
+	}
+	if l.LessonPlanKey.Valid {
+		lesson.LessonPlanKey = l.LessonPlanKey.String
+	}
+	if l.LessonPlanError.Valid {
+		lesson.LessonPlanError = l.LessonPlanError.String
+	}
+	return lesson
 }

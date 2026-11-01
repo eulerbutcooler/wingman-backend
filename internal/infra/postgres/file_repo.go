@@ -74,6 +74,10 @@ func (r *fileRepo) AllReadyForCourse(ctx context.Context, courseID uuid.UUID) (b
 	return result, nil
 }
 
+func (r *fileRepo) Delete(ctx context.Context, id uuid.UUID) error {
+	return r.q.DeleteFile(ctx, id)
+}
+
 func toDomainFile(f gen.File) *domain.FileAsset {
 	return &domain.FileAsset{
 		ID:           f.ID,

@@ -56,6 +56,21 @@ type Course struct {
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 	Published    bool      `json:"published"`
+	ThumbnailKey string    `json:"thumbnail_key"`
+}
+
+type CourseSyllabus struct {
+	CourseID    uuid.UUID   `json:"course_id"`
+	FileName    string      `json:"file_name"`
+	MinioKey    string      `json:"minio_key"`
+	Status      string      `json:"status"`
+	Topics      []byte      `json:"topics"`
+	Error       pgtype.Text `json:"error"`
+	CreatedAt   time.Time   `json:"created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
+	SubjectCode pgtype.Text `json:"subject_code"`
+	SubjectName pgtype.Text `json:"subject_name"`
+	Rows        []byte      `json:"rows"`
 }
 
 type Event struct {
@@ -79,13 +94,17 @@ type File struct {
 }
 
 type Lesson struct {
-	ID        uuid.UUID `json:"id"`
-	CourseID  uuid.UUID `json:"course_id"`
-	Title     string    `json:"title"`
-	OrderIdx  int32     `json:"order_idx"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Keywords  []byte    `json:"keywords"`
+	ID               uuid.UUID   `json:"id"`
+	CourseID         uuid.UUID   `json:"course_id"`
+	Title            string      `json:"title"`
+	OrderIdx         int32       `json:"order_idx"`
+	CreatedAt        time.Time   `json:"created_at"`
+	UpdatedAt        time.Time   `json:"updated_at"`
+	Keywords         []byte      `json:"keywords"`
+	SyllabusRowIndex pgtype.Int4 `json:"syllabus_row_index"`
+	LessonPlanKey    pgtype.Text `json:"lesson_plan_key"`
+	LessonPlanStatus string      `json:"lesson_plan_status"`
+	LessonPlanError  pgtype.Text `json:"lesson_plan_error"`
 }
 
 type LessonTopic struct {

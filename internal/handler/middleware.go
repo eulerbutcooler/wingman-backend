@@ -80,6 +80,19 @@ func RequestLogger(log *zap.Logger) func(http.Handler) http.Handler {
 	}
 }
 
+// DisableServerTimeouts clears the http.Server's global read/write deadlines
+// for long-lived routes (resumable uploads and SSE chat). The server-level
+// ReadTimeout/WriteTimeout are still applied to normal API routes, and chi's
+// 30s timeout middleware still bounds those handlers.
+func DisableServerTimeouts(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rc := http.NewResponseController(w)
+		_ = rc.SetReadDeadline(time.Time{})
+		_ = rc.SetWriteDeadline(time.Time{})
+		next.ServeHTTP(w, r)
+	})
+}
+
 func RateLimitMiddleware(rl *redisinfra.RateLimiter, rate, burst int) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

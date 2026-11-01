@@ -75,6 +75,7 @@ func main() {
 	lessonRepo := postgres.NewLessonRepo(pool)
 	fileRepo := postgres.NewFileRepo(pool)
 	quizRepo := postgres.NewQuizRepo(pool)
+	syllabusRepo := postgres.NewSyllabusRepo(pool)
 	chatRepo := postgres.NewChatRepo(pool)
 	analyticsRepo := postgres.NewAnalyticsRepo(pool)
 	progressRepo := postgres.NewProgressRepo(gen.New(pool))
@@ -101,10 +102,29 @@ func main() {
 
 	// Services
 	userSvc := service.NewUserService(userRepo, cfg.JWT)
-	courseSvc := service.NewCourseService(courseRepo, lessonRepo, quizRepo, fileRepo, queue, cache, storage, ragClient)
-	fileSvc := service.NewFileService(fileRepo, storage, cache)
+	courseSvc := service.NewCourseService(courseRepo, lessonRepo, quizRepo, fileRepo, syllabusRepo, queue, cache, storage, ragClient)
+	fileSvc := service.NewFileService(fileRepo, lessonRepo, courseRepo, storage, ragClient)
 	chatSvc := service.NewChatService(chatRepo, courseRepo, userRepo, ragClient)
-	quizSvc := service.NewQuizService(quizRepo, courseRepo, queue, cache, ragClient)
+	quizSvc := service.NewQuizService(quizRepo, courseRepo, lessonRepo, queue, cache, ragClient)
+	lessonPlanSvc := service.NewLessonPlanService(
+		courseRepo,
+		lessonRepo,
+		syllabusRepo,
+		storage,
+		ragClient,
+		cfg.MinIO.MinIOBucket,
+	)
+	syllabusSvc := service.NewSyllabusService(
+		courseRepo,
+		lessonRepo,
+		syllabusRepo,
+		storage,
+		ragClient,
+		lessonPlanSvc,
+		cfg.MinIO.MinIOBucket,
+	)
+	// Resume lesson-plan PDFs left pending/generating by a previous process.
+	go lessonPlanSvc.ResumeBacklog(context.Background())
 	analyticsSvc := service.NewAnalyticsService(analyticsRepo)
 	progressSvc := service.NewProgressService(progressRepo)
 
@@ -114,12 +134,14 @@ func main() {
 	lessonH := handler.NewLessonHandler(courseSvc)
 	fileH := handler.NewFileHandler(fileSvc)
 	quizH := handler.NewQuizHandler(quizSvc)
+	syllabusH := handler.NewSyllabusHandler(syllabusSvc)
+	lessonPlanH := handler.NewLessonPlanHandler(lessonPlanSvc)
 	chatH := handler.NewChatHandler(chatSvc)
 	analytH := handler.NewAnalyticsHandler(analyticsSvc)
 	healthH := handler.NewHealthHandler()
 	progressH := handler.NewProgressHandler(progressSvc)
 
-	router := handler.NewRouter(userH, courseH, lessonH, fileH, quizH, progressH, chatH, analytH, healthH, tusH, rateLimiter, cfg, log)
+	router := handler.NewRouter(userH, courseH, lessonH, fileH, quizH, syllabusH, lessonPlanH, progressH, chatH, analytH, healthH, tusH, rateLimiter, cfg, log)
 
 	// Workers
 	workerCtx, workerCancel := context.WithCancel(ctx)
@@ -127,8 +149,9 @@ func main() {
 
 	go func() {
 		if err := worker.StartIngestDoneWorker(workerCtx, js, worker.IngestDoneWorkerDeps{
-			Files:   fileRepo,
-			Lessons: lessonRepo,
+			Files:     fileRepo,
+			Lessons:   lessonRepo,
+			RagClient: ragClient,
 		}, log); err != nil {
 			log.Error("ingest_done_worker stopped", zap.Error(err))
 		}

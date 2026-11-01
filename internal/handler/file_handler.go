@@ -43,6 +43,22 @@ func (h *FileHandler) ViewURL(w http.ResponseWriter, r *http.Request) {
 	apierr.WriteData(w, http.StatusOK, map[string]string{"url": url})
 }
 
+func (h *FileHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	fileID, err := uuid.Parse(chi.URLParam(r, "fileId"))
+	if err != nil {
+		apierr.WriteJSON(w, apierr.BadRequest("invalid file id"))
+		return
+	}
+
+	claims := GetClaims(r)
+	if err := h.svc.Delete(r.Context(), fileID, claims.UserID); err != nil {
+		apierr.WriteJSON(w, mapDomainError(err))
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *FileHandler) ListByLesson(w http.ResponseWriter, r *http.Request) {
 	lessonID, err := uuid.Parse(chi.URLParam(r, "lessonId"))
 	if err != nil {

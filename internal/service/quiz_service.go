@@ -16,13 +16,28 @@ import (
 type QuizService struct {
 	quizzes port.QuizRepository
 	courses port.CourseRepository
+	lessons port.LessonRepository
 	queue   port.MessageQueue
 	cache   port.Cache
 	rag     port.RagClient
 }
 
-func NewQuizService(quizzes port.QuizRepository, courses port.CourseRepository, queue port.MessageQueue, cache port.Cache, rag port.RagClient) *QuizService {
-	return &QuizService{quizzes: quizzes, courses: courses, queue: queue, cache: cache, rag: rag}
+func NewQuizService(
+	quizzes port.QuizRepository,
+	courses port.CourseRepository,
+	lessons port.LessonRepository,
+	queue port.MessageQueue,
+	cache port.Cache,
+	rag port.RagClient,
+) *QuizService {
+	return &QuizService{
+		quizzes: quizzes,
+		courses: courses,
+		lessons: lessons,
+		queue:   queue,
+		cache:   cache,
+		rag:     rag,
+	}
 }
 
 func (s *QuizService) ListByCourse(ctx context.Context, courseID uuid.UUID) ([]domain.Quiz, error) {
@@ -47,6 +62,13 @@ func (s *QuizService) ListByCourse(ctx context.Context, courseID uuid.UUID) ([]d
 		s.cache.Set(ctx, key, string(data), 5*time.Minute)
 	}
 	return quizzes, nil
+}
+
+func (s *QuizService) ListQuestionBank(
+	ctx context.Context,
+	courseID uuid.UUID,
+) ([]domain.Question, error) {
+	return s.quizzes.ListQuestionsByCourse(ctx, courseID)
 }
 
 func (s *QuizService) ListByCourseWithUser(ctx context.Context, courseID uuid.UUID, userID uuid.UUID) ([]domain.Quiz, error) {
@@ -244,8 +266,33 @@ func (s *QuizService) ResetQuiz(ctx context.Context, quizID, instructorID uuid.U
 	s.cache.Delete(ctx, "quiz:"+quizID.String())
 	s.cache.Delete(ctx, "quizzes:course:"+course.ID.String())
 
+	if quiz.LessonID == nil {
+		// Course exams sample dynamically from the lesson question banks, so
+		// there is nothing to regenerate.
+		return s.quizzes.UpdateQuizStatus(ctx, quizID, domain.QuizReady)
+	}
+
+	keywords := []string{}
+	if lesson, err := s.lessons.GetByID(ctx, *quiz.LessonID); err == nil && len(lesson.Keywords) > 0 {
+		_ = json.Unmarshal(lesson.Keywords, &keywords)
+	}
+	if len(keywords) == 0 {
+		// Fall back to the stored lesson topics so a reset still has a topic
+		// source when the lesson keywords were never persisted.
+		if topics, err := s.lessons.ListTopicsByLesson(ctx, *quiz.LessonID); err == nil {
+			for _, topic := range topics {
+				keywords = append(keywords, topic.Title)
+			}
+		}
+	}
+
 	payload, err := json.Marshal(map[string]any{
+		"type":         "lesson",
+		"request_id":   uuid.NewString(),
+		"quiz_id":      quiz.ID.String(),
 		"course_id":    course.ID.String(),
+		"lesson_id":    quiz.LessonID.String(),
+		"keywords":     keywords,
 		"difficulty":   string(quiz.Difficulty),
 		"limit_chunks": 20,
 	})

@@ -21,8 +21,10 @@ type Querier interface {
 	CreateMessage(ctx context.Context, arg CreateMessageParams) (ChatMessage, error)
 	CreateQuestion(ctx context.Context, arg CreateQuestionParams) (Question, error)
 	CreateQuiz(ctx context.Context, arg CreateQuizParams) (Quiz, error)
+	CreateSyllabusLesson(ctx context.Context, arg CreateSyllabusLessonParams) (Lesson, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteCourse(ctx context.Context, id uuid.UUID) error
+	DeleteFile(ctx context.Context, id uuid.UUID) error
 	DeleteLesson(ctx context.Context, id uuid.UUID) error
 	DeleteQuestionsByQuiz(ctx context.Context, quizID uuid.UUID) error
 	DeleteQuizzesByCourse(ctx context.Context, courseID uuid.UUID) error
@@ -35,6 +37,7 @@ type Querier interface {
 	GetFileProgress(ctx context.Context, arg GetFileProgressParams) ([]GetFileProgressRow, error)
 	GetLessonByID(ctx context.Context, id uuid.UUID) (Lesson, error)
 	GetLessonProgress(ctx context.Context, arg GetLessonProgressParams) ([]UserLessonProgress, error)
+	GetMaterialsLesson(ctx context.Context, courseID uuid.UUID) (Lesson, error)
 	GetOverview(ctx context.Context, instructorID uuid.UUID) (GetOverviewRow, error)
 	GetQuestionByID(ctx context.Context, id uuid.UUID) (Question, error)
 	GetQuizByCourseAndDifficulty(ctx context.Context, arg GetQuizByCourseAndDifficultyParams) (Quiz, error)
@@ -43,22 +46,27 @@ type Querier interface {
 	GetStudentScores(ctx context.Context, courseID uuid.UUID) ([]GetStudentScoresRow, error)
 	GetUserByEnrollmentID(ctx context.Context, enrollmentID string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
+	ListAllLessonsByCourse(ctx context.Context, courseID uuid.UUID) ([]Lesson, error)
 	ListAnswersByAttempt(ctx context.Context, attemptID uuid.UUID) ([]Answer, error)
 	ListChatSessionsByUser(ctx context.Context, userID uuid.UUID) ([]ChatSession, error)
 	ListCoursesByInstructor(ctx context.Context, instructorID uuid.UUID) ([]Course, error)
 	ListCoursesByRank(ctx context.Context, rank string) ([]Course, error)
 	ListFilesByLesson(ctx context.Context, lessonID uuid.UUID) ([]File, error)
+	ListLessonPlanBacklog(ctx context.Context) ([]ListLessonPlanBacklogRow, error)
 	ListLessonsByCourse(ctx context.Context, courseID uuid.UUID) ([]Lesson, error)
 	ListMessagesBySession(ctx context.Context, arg ListMessagesBySessionParams) ([]ChatMessage, error)
 	ListQuestionsByQuiz(ctx context.Context, quizID uuid.UUID) ([]Question, error)
 	ListQuizzesByCourse(ctx context.Context, courseID uuid.UUID) ([]Quiz, error)
 	PublishCourse(ctx context.Context, id uuid.UUID) error
 	RecordEvent(ctx context.Context, arg RecordEventParams) (Event, error)
+	SetCourseLessonPlanStatus(ctx context.Context, arg SetCourseLessonPlanStatusParams) error
 	UpdateAttempt(ctx context.Context, arg UpdateAttemptParams) error
 	UpdateCourse(ctx context.Context, arg UpdateCourseParams) (Course, error)
+	UpdateCourseThumbnail(ctx context.Context, arg UpdateCourseThumbnailParams) error
 	UpdateFileIngestStatus(ctx context.Context, arg UpdateFileIngestStatusParams) error
 	UpdateLesson(ctx context.Context, arg UpdateLessonParams) (Lesson, error)
 	UpdateLessonKeywords(ctx context.Context, arg UpdateLessonKeywordsParams) (Lesson, error)
+	UpdateLessonPlan(ctx context.Context, arg UpdateLessonPlanParams) (Lesson, error)
 	UpdateQuizStatus(ctx context.Context, arg UpdateQuizStatusParams) error
 	UpsertCourseProgress(ctx context.Context, arg UpsertCourseProgressParams) (UserCourseProgress, error)
 	UpsertFileProgress(ctx context.Context, arg UpsertFileProgressParams) (UserFileProgress, error)

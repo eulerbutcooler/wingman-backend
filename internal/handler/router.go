@@ -20,6 +20,8 @@ func NewRouter(
 	lessonH *LessonHandler,
 	fileH *FileHandler,
 	quizH *QuizHandler,
+	syllabusH *SyllabusHandler,
+	lessonPlanH *LessonPlanHandler,
 	progressH *ProgressHandler,
 	chatH *ChatHandler,
 	analytH *AnalyticsHandler,
@@ -64,9 +66,11 @@ func NewRouter(
 
 		r.Get("/api/v1/courses", courseH.List)
 		r.Get("/api/v1/courses/{courseId}", courseH.Get)
+		r.Get("/api/v1/courses/{courseId}/syllabus", syllabusH.Get)
 		r.Get("/api/v1/courses/{courseId}/lessons", lessonH.List)
 		r.Get("/api/v1/lessons/{lessonId}/topics", lessonH.ListTopics)
 		r.Get("/api/v1/lessons/{lessonId}/files", fileH.ListByLesson)
+		r.Get("/api/v1/lessons/{lessonId}/lesson-plan", lessonPlanH.GetURL)
 		r.Get("/api/v1/files/{fileId}/status", fileH.IngestStatus)
 		r.Get("/api/v1/files/{fileId}/view", fileH.ViewURL)
 
@@ -77,13 +81,13 @@ func NewRouter(
 		r.Post("/api/v1/progress/course/{courseId}", progressH.MarkCourseComplete)
 		r.Get("/api/v1/quizzes/{quizId}", quizH.Get)
 		r.Post("/api/v1/quizzes/{quizId}/attempt", quizH.StartAttempt)
-		r.Post("/api/v1/attempts/{attemptId}/answer", quizH.SubmitAnswer)
 		r.Post("/api/v1/attempts/{attemptId}/finish", quizH.FinishAttempt)
 		r.Get("/api/v1/attempts/{attemptId}/results", quizH.Results)
 
 		r.Get("/api/v1/chat/sessions", chatH.ListSessions)
 		r.Post("/api/v1/chat/sessions", chatH.CreateSession)
 		r.Get("/api/v1/chat/sessions/{sessionId}/history", chatH.GetHistory)
+		r.Delete("/api/v1/chat/sessions/{sessionId}", chatH.DeleteSession)
 		r.Get("/api/v1/analytics/student", analytH.StudentOverview)
 
 		r.Group(func(r chi.Router) {
@@ -91,20 +95,52 @@ func NewRouter(
 
 			r.Post("/api/v1/courses", courseH.Create)
 			r.Put("/api/v1/courses/{courseId}", courseH.Update)
+			r.Post("/api/v1/courses/{courseId}/thumbnail", courseH.UploadThumbnail)
 			r.Post("/api/v1/courses/{courseId}/finalize", courseH.Finalize)
+			r.Post("/api/v1/courses/{courseId}/generate-content", courseH.GenerateContent)
+			r.Post("/api/v1/courses/{courseId}/publish", courseH.Publish)
+			r.Post("/api/v1/courses/{courseId}/lesson-plans/generate", lessonPlanH.Generate)
 			r.Delete("/api/v1/courses/{courseId}", courseH.Delete)
 
+			r.Get("/api/v1/courses/{courseId}/materials-lesson", lessonH.MaterialsLesson)
 			r.Post("/api/v1/courses/{courseId}/lessons", lessonH.Create)
 			r.Put("/api/v1/lessons/{lessonId}", lessonH.Update)
 			r.Delete("/api/v1/lessons/{lessonId}", lessonH.Delete)
+			r.Delete("/api/v1/files/{fileId}", fileH.Delete)
 
 			r.Post("/api/v1/quizzes/{quizId}/reset", quizH.Reset)
+			r.Get("/api/v1/courses/{courseId}/question-bank", quizH.QuestionBank)
 
 			r.Get("/api/v1/analytics", analytH.Overview)
 			r.Get("/api/v1/analytics/instructor", analytH.InstructorOverview)
 			r.Get("/api/v1/analytics/students/{studentId}", analytH.StudentDetail)
 			r.Get("/api/v1/analytics/{courseId}", analytH.CourseMetrics)
 		})
+	})
+
+	// Master-syllabus parsing and topic extraction can take 10-60s on the LLM.
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.StripSlashes)
+		r.Use(JWTAuthMiddleware(cfg.JWT.JWTAccessSecret))
+		r.Use(RateLimitMiddleware(rl, 60, 10))
+		r.Use(RBACMiddleware(domain.RoleInstructor))
+		r.Use(middleware.Timeout(180 * time.Second))
+		r.Use(DisableServerTimeouts)
+		r.Post("/api/v1/courses/{courseId}/syllabus", syllabusH.Upload)
+		r.Get("/api/v1/courses/{courseId}/syllabus/file", syllabusH.ViewURL)
+		r.Post("/api/v1/syllabus/import", syllabusH.Import)
+	})
+
+	// Open-ended grading can take longer than the default 30s while the local
+	// LLM is generating a quiz. Give this route its own 120s budget and clear
+	// the server's global 30s write deadline for the response.
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.StripSlashes)
+		r.Use(JWTAuthMiddleware(cfg.JWT.JWTAccessSecret))
+		r.Use(RateLimitMiddleware(rl, 60, 10))
+		r.Use(middleware.Timeout(120 * time.Second))
+		r.Use(DisableServerTimeouts)
+		r.Post("/api/v1/attempts/{attemptId}/answer", quizH.SubmitAnswer)
 	})
 
 	// Chat streaming route — outside the Timeout middleware group because
@@ -116,6 +152,7 @@ func NewRouter(
 		r.Use(middleware.StripSlashes)
 		r.Use(JWTAuthMiddleware(cfg.JWT.JWTAccessSecret))
 		r.Use(RateLimitMiddleware(rl, 60, 10))
+		r.Use(DisableServerTimeouts)
 		r.Post("/api/v1/chat/sessions/{sessionId}/message", chatH.SendMessage)
 	})
 
@@ -130,6 +167,7 @@ func NewRouter(
 	r.Group(func(r chi.Router) {
 		r.Use(JWTAuthMiddleware(cfg.JWT.JWTAccessSecret))
 		r.Use(RBACMiddleware(domain.RoleInstructor))
+		r.Use(DisableServerTimeouts)
 		r.Mount("/api/v1/files/tus", http.StripPrefix("/api/v1/files/tus", tusH))
 	})
 
@@ -137,11 +175,11 @@ func NewRouter(
 }
 
 func NewUserHandler(svc *service.UserService) *UserHandler       { return &UserHandler{svc: svc} }
-func NewCourseHandler(svc *service.CourseService) *CourseHandler  { return &CourseHandler{svc: svc} }
-func NewLessonHandler(svc *service.CourseService) *LessonHandler  { return &LessonHandler{svc: svc} }
-func NewFileHandler(svc *service.FileService) *FileHandler        { return &FileHandler{svc: svc} }
-func NewQuizHandler(svc *service.QuizService) *QuizHandler        { return &QuizHandler{svc: svc} }
-func NewChatHandler(svc *service.ChatService) *ChatHandler        { return &ChatHandler{svc: svc} }
+func NewCourseHandler(svc *service.CourseService) *CourseHandler { return &CourseHandler{svc: svc} }
+func NewLessonHandler(svc *service.CourseService) *LessonHandler { return &LessonHandler{svc: svc} }
+func NewFileHandler(svc *service.FileService) *FileHandler       { return &FileHandler{svc: svc} }
+func NewQuizHandler(svc *service.QuizService) *QuizHandler       { return &QuizHandler{svc: svc} }
+func NewChatHandler(svc *service.ChatService) *ChatHandler       { return &ChatHandler{svc: svc} }
 func NewAnalyticsHandler(svc *service.AnalyticsService) *AnalyticsHandler {
 	return &AnalyticsHandler{svc: svc}
 }

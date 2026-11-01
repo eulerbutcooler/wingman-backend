@@ -3,11 +3,13 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	"github.com/Amanyd/backend/internal/domain"
 	"github.com/Amanyd/backend/internal/infra/postgres/gen"
 	"github.com/Amanyd/backend/internal/port"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -43,6 +45,9 @@ func (r *chatRepo) CreateSession(ctx context.Context, s *domain.ChatSession) err
 func (r *chatRepo) GetSessionByID(ctx context.Context, id uuid.UUID) (*domain.ChatSession, error) {
 	row, err := r.q.GetChatSessionByID(ctx, id)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, err
 	}
 	return toDomainSession(row), nil
@@ -84,6 +89,11 @@ func (r *chatRepo) ListSessionsByUser(ctx context.Context, userID uuid.UUID) ([]
 		return nil, err
 	}
 	return sessions, nil
+}
+
+func (r *chatRepo) DeleteSession(ctx context.Context, id uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM chat_sessions WHERE id = $1`, id)
+	return err
 }
 
 func (r *chatRepo) CreateMessage(ctx context.Context, m *domain.Message) error {

@@ -22,6 +22,14 @@ var validRanks = map[string]bool{
 	"rear_admiral":         true,
 	"vice_admiral":         true,
 	"admiral":              true,
+	// Sailor ranks, junior to senior.
+	"seaman_ii":                               true,
+	"seaman_i":                                true,
+	"leading_seaman_/_leading_rate":           true,
+	"petty_officer_(po)":                      true,
+	"chief_petty_officer_(cpo)":               true,
+	"master_chief_petty_officer_ii_(mcpo_ii)": true,
+	"master_chief_petty_officer_i_(mcpo_i)":   true,
 }
 
 func init() {

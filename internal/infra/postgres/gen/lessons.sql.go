@@ -9,11 +9,12 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createLesson = `-- name: CreateLesson :one
 INSERT INTO lessons (course_id, title, order_idx)
-VALUES ($1, $2, $3) RETURNING id, course_id, title, order_idx, created_at, updated_at, keywords
+VALUES ($1, $2, $3) RETURNING id, course_id, title, order_idx, created_at, updated_at, keywords, syllabus_row_index, lesson_plan_key, lesson_plan_status, lesson_plan_error
 `
 
 type CreateLessonParams struct {
@@ -33,6 +34,46 @@ func (q *Queries) CreateLesson(ctx context.Context, arg CreateLessonParams) (Les
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Keywords,
+		&i.SyllabusRowIndex,
+		&i.LessonPlanKey,
+		&i.LessonPlanStatus,
+		&i.LessonPlanError,
+	)
+	return i, err
+}
+
+const createSyllabusLesson = `-- name: CreateSyllabusLesson :one
+INSERT INTO lessons (course_id, title, order_idx, syllabus_row_index)
+VALUES ($1, $2, $3, $4) RETURNING id, course_id, title, order_idx, created_at, updated_at, keywords, syllabus_row_index, lesson_plan_key, lesson_plan_status, lesson_plan_error
+`
+
+type CreateSyllabusLessonParams struct {
+	CourseID         uuid.UUID   `json:"course_id"`
+	Title            string      `json:"title"`
+	OrderIdx         int32       `json:"order_idx"`
+	SyllabusRowIndex pgtype.Int4 `json:"syllabus_row_index"`
+}
+
+func (q *Queries) CreateSyllabusLesson(ctx context.Context, arg CreateSyllabusLessonParams) (Lesson, error) {
+	row := q.db.QueryRow(ctx, createSyllabusLesson,
+		arg.CourseID,
+		arg.Title,
+		arg.OrderIdx,
+		arg.SyllabusRowIndex,
+	)
+	var i Lesson
+	err := row.Scan(
+		&i.ID,
+		&i.CourseID,
+		&i.Title,
+		&i.OrderIdx,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Keywords,
+		&i.SyllabusRowIndex,
+		&i.LessonPlanKey,
+		&i.LessonPlanStatus,
+		&i.LessonPlanError,
 	)
 	return i, err
 }
@@ -47,7 +88,7 @@ func (q *Queries) DeleteLesson(ctx context.Context, id uuid.UUID) error {
 }
 
 const getLessonByID = `-- name: GetLessonByID :one
-SELECT id, course_id, title, order_idx, created_at, updated_at, keywords FROM lessons WHERE id = $1
+SELECT id, course_id, title, order_idx, created_at, updated_at, keywords, syllabus_row_index, lesson_plan_key, lesson_plan_status, lesson_plan_error FROM lessons WHERE id = $1
 `
 
 func (q *Queries) GetLessonByID(ctx context.Context, id uuid.UUID) (Lesson, error) {
@@ -61,12 +102,112 @@ func (q *Queries) GetLessonByID(ctx context.Context, id uuid.UUID) (Lesson, erro
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Keywords,
+		&i.SyllabusRowIndex,
+		&i.LessonPlanKey,
+		&i.LessonPlanStatus,
+		&i.LessonPlanError,
 	)
 	return i, err
 }
 
+const getMaterialsLesson = `-- name: GetMaterialsLesson :one
+SELECT id, course_id, title, order_idx, created_at, updated_at, keywords, syllabus_row_index, lesson_plan_key, lesson_plan_status, lesson_plan_error FROM lessons
+WHERE course_id = $1 AND order_idx = -1
+ORDER BY created_at ASC
+LIMIT 1
+`
+
+func (q *Queries) GetMaterialsLesson(ctx context.Context, courseID uuid.UUID) (Lesson, error) {
+	row := q.db.QueryRow(ctx, getMaterialsLesson, courseID)
+	var i Lesson
+	err := row.Scan(
+		&i.ID,
+		&i.CourseID,
+		&i.Title,
+		&i.OrderIdx,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Keywords,
+		&i.SyllabusRowIndex,
+		&i.LessonPlanKey,
+		&i.LessonPlanStatus,
+		&i.LessonPlanError,
+	)
+	return i, err
+}
+
+const listAllLessonsByCourse = `-- name: ListAllLessonsByCourse :many
+SELECT id, course_id, title, order_idx, created_at, updated_at, keywords, syllabus_row_index, lesson_plan_key, lesson_plan_status, lesson_plan_error FROM lessons WHERE course_id = $1
+ORDER BY order_idx ASC
+`
+
+func (q *Queries) ListAllLessonsByCourse(ctx context.Context, courseID uuid.UUID) ([]Lesson, error) {
+	rows, err := q.db.Query(ctx, listAllLessonsByCourse, courseID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Lesson{}
+	for rows.Next() {
+		var i Lesson
+		if err := rows.Scan(
+			&i.ID,
+			&i.CourseID,
+			&i.Title,
+			&i.OrderIdx,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Keywords,
+			&i.SyllabusRowIndex,
+			&i.LessonPlanKey,
+			&i.LessonPlanStatus,
+			&i.LessonPlanError,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLessonPlanBacklog = `-- name: ListLessonPlanBacklog :many
+SELECT DISTINCT c.id AS course_id, c.instructor_id
+FROM courses c
+JOIN course_syllabus s ON s.course_id = c.id AND s.status = 'ready'
+JOIN lessons l ON l.course_id = c.id AND l.order_idx >= 0
+WHERE l.lesson_plan_status IN ('pending', 'generating')
+`
+
+type ListLessonPlanBacklogRow struct {
+	CourseID     uuid.UUID `json:"course_id"`
+	InstructorID uuid.UUID `json:"instructor_id"`
+}
+
+func (q *Queries) ListLessonPlanBacklog(ctx context.Context) ([]ListLessonPlanBacklogRow, error) {
+	rows, err := q.db.Query(ctx, listLessonPlanBacklog)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListLessonPlanBacklogRow{}
+	for rows.Next() {
+		var i ListLessonPlanBacklogRow
+		if err := rows.Scan(&i.CourseID, &i.InstructorID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listLessonsByCourse = `-- name: ListLessonsByCourse :many
-SELECT id, course_id, title, order_idx, created_at, updated_at, keywords FROM lessons WHERE course_id = $1
+SELECT id, course_id, title, order_idx, created_at, updated_at, keywords, syllabus_row_index, lesson_plan_key, lesson_plan_status, lesson_plan_error FROM lessons WHERE course_id = $1 AND order_idx >= 0
 ORDER BY order_idx ASC
 `
 
@@ -87,6 +228,10 @@ func (q *Queries) ListLessonsByCourse(ctx context.Context, courseID uuid.UUID) (
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Keywords,
+			&i.SyllabusRowIndex,
+			&i.LessonPlanKey,
+			&i.LessonPlanStatus,
+			&i.LessonPlanError,
 		); err != nil {
 			return nil, err
 		}
@@ -98,9 +243,28 @@ func (q *Queries) ListLessonsByCourse(ctx context.Context, courseID uuid.UUID) (
 	return items, nil
 }
 
+const setCourseLessonPlanStatus = `-- name: SetCourseLessonPlanStatus :exec
+UPDATE lessons
+SET lesson_plan_status = $2,
+    lesson_plan_error = NULLIF($3, ''),
+    updated_at = now()
+WHERE course_id = $1
+`
+
+type SetCourseLessonPlanStatusParams struct {
+	CourseID         uuid.UUID   `json:"course_id"`
+	LessonPlanStatus string      `json:"lesson_plan_status"`
+	Column3          interface{} `json:"column_3"`
+}
+
+func (q *Queries) SetCourseLessonPlanStatus(ctx context.Context, arg SetCourseLessonPlanStatusParams) error {
+	_, err := q.db.Exec(ctx, setCourseLessonPlanStatus, arg.CourseID, arg.LessonPlanStatus, arg.Column3)
+	return err
+}
+
 const updateLesson = `-- name: UpdateLesson :one
 UPDATE lessons SET title = $2, order_idx = $3, updated_at = now()
-WHERE id = $1 RETURNING id, course_id, title, order_idx, created_at, updated_at, keywords
+WHERE id = $1 RETURNING id, course_id, title, order_idx, created_at, updated_at, keywords, syllabus_row_index, lesson_plan_key, lesson_plan_status, lesson_plan_error
 `
 
 type UpdateLessonParams struct {
@@ -120,13 +284,17 @@ func (q *Queries) UpdateLesson(ctx context.Context, arg UpdateLessonParams) (Les
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Keywords,
+		&i.SyllabusRowIndex,
+		&i.LessonPlanKey,
+		&i.LessonPlanStatus,
+		&i.LessonPlanError,
 	)
 	return i, err
 }
 
 const updateLessonKeywords = `-- name: UpdateLessonKeywords :one
 UPDATE lessons SET keywords = $2, updated_at = now()
-WHERE id = $1 RETURNING id, course_id, title, order_idx, created_at, updated_at, keywords
+WHERE id = $1 RETURNING id, course_id, title, order_idx, created_at, updated_at, keywords, syllabus_row_index, lesson_plan_key, lesson_plan_status, lesson_plan_error
 `
 
 type UpdateLessonKeywordsParams struct {
@@ -145,6 +313,51 @@ func (q *Queries) UpdateLessonKeywords(ctx context.Context, arg UpdateLessonKeyw
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Keywords,
+		&i.SyllabusRowIndex,
+		&i.LessonPlanKey,
+		&i.LessonPlanStatus,
+		&i.LessonPlanError,
+	)
+	return i, err
+}
+
+const updateLessonPlan = `-- name: UpdateLessonPlan :one
+UPDATE lessons
+SET lesson_plan_key = $2,
+    lesson_plan_status = $3,
+    lesson_plan_error = NULLIF($4, ''),
+    updated_at = now()
+WHERE id = $1
+RETURNING id, course_id, title, order_idx, created_at, updated_at, keywords, syllabus_row_index, lesson_plan_key, lesson_plan_status, lesson_plan_error
+`
+
+type UpdateLessonPlanParams struct {
+	ID               uuid.UUID   `json:"id"`
+	LessonPlanKey    pgtype.Text `json:"lesson_plan_key"`
+	LessonPlanStatus string      `json:"lesson_plan_status"`
+	Column4          interface{} `json:"column_4"`
+}
+
+func (q *Queries) UpdateLessonPlan(ctx context.Context, arg UpdateLessonPlanParams) (Lesson, error) {
+	row := q.db.QueryRow(ctx, updateLessonPlan,
+		arg.ID,
+		arg.LessonPlanKey,
+		arg.LessonPlanStatus,
+		arg.Column4,
+	)
+	var i Lesson
+	err := row.Scan(
+		&i.ID,
+		&i.CourseID,
+		&i.Title,
+		&i.OrderIdx,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Keywords,
+		&i.SyllabusRowIndex,
+		&i.LessonPlanKey,
+		&i.LessonPlanStatus,
+		&i.LessonPlanError,
 	)
 	return i, err
 }

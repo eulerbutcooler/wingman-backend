@@ -31,6 +31,21 @@ func (h *QuizHandler) ListByCourse(w http.ResponseWriter, r *http.Request) {
 	apierr.WriteData(w, http.StatusOK, quizzes)
 }
 
+func (h *QuizHandler) QuestionBank(w http.ResponseWriter, r *http.Request) {
+	courseID, err := uuid.Parse(chi.URLParam(r, "courseId"))
+	if err != nil {
+		apierr.WriteJSON(w, apierr.BadRequest("invalid course id"))
+		return
+	}
+
+	questions, err := h.svc.ListQuestionBank(r.Context(), courseID)
+	if err != nil {
+		apierr.WriteJSON(w, mapDomainError(err))
+		return
+	}
+	apierr.WriteData(w, http.StatusOK, questions)
+}
+
 func (h *QuizHandler) Get(w http.ResponseWriter, r *http.Request) {
 	quizID, err := uuid.Parse(chi.URLParam(r, "quizId"))
 	if err != nil {

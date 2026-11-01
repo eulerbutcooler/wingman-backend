@@ -142,6 +142,21 @@ func (h *ChatHandler) SendMessage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *ChatHandler) DeleteSession(w http.ResponseWriter, r *http.Request) {
+	sessionID, err := uuid.Parse(chi.URLParam(r, "sessionId"))
+	if err != nil {
+		apierr.WriteJSON(w, apierr.BadRequest("invalid session id"))
+		return
+	}
+
+	claims := GetClaims(r)
+	if err := h.svc.DeleteSession(r.Context(), sessionID, claims.UserID); err != nil {
+		apierr.WriteJSON(w, mapDomainError(err))
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *ChatHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 	sessionID, err := uuid.Parse(chi.URLParam(r, "sessionId"))
 	if err != nil {

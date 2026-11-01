@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	awscreds "github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/Amanyd/backend/internal/config"
 	"github.com/Amanyd/backend/internal/domain"
 	natsinfra "github.com/Amanyd/backend/internal/infra/nats"
 	"github.com/Amanyd/backend/internal/port"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awscreds "github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/google/uuid"
 	"github.com/tus/tusd/v2/pkg/handler"
 	"github.com/tus/tusd/v2/pkg/s3store"
@@ -125,15 +125,29 @@ func handleUploadComplete(ctx context.Context, event handler.HookEvent, deps TUS
 		minioKey = minioKey[:idx]
 	}
 
+	ingestStatus := domain.IngestPending
+	if fileType == domain.FileTypeVideo {
+		// Videos are reference material and are not parsed into the RAG index.
+		ingestStatus = domain.IngestReady
+	}
+
 	file := &domain.FileAsset{
 		LessonID:     lessonID,
 		FileName:     fileName,
 		FileType:     fileType,
 		MinioKey:     minioKey,
-		IngestStatus: domain.IngestPending,
+		IngestStatus: ingestStatus,
 	}
 	if err := deps.Files.Create(ctx, file); err != nil {
 		return fmt.Errorf("create file: %w", err)
+	}
+
+	if fileType == domain.FileTypeVideo {
+		log.Info("video upload complete, stored without ingest",
+			zap.String("file_id", file.ID.String()),
+			zap.String("course_id", course.ID.String()),
+		)
+		return nil
 	}
 
 	payload, err := json.Marshal(map[string]string{

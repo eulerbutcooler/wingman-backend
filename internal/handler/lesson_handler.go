@@ -46,6 +46,26 @@ func (h *LessonHandler) Create(w http.ResponseWriter, r *http.Request) {
 	apierr.WriteData(w, http.StatusCreated, lesson)
 }
 
+func (h *LessonHandler) MaterialsLesson(w http.ResponseWriter, r *http.Request) {
+	courseID, err := uuid.Parse(chi.URLParam(r, "courseId"))
+	if err != nil {
+		apierr.WriteJSON(w, apierr.BadRequest("invalid course id"))
+		return
+	}
+
+	claims := GetClaims(r)
+	lesson, err := h.svc.GetOrCreateMaterialsLesson(
+		r.Context(),
+		courseID,
+		claims.UserID,
+	)
+	if err != nil {
+		apierr.WriteJSON(w, mapDomainError(err))
+		return
+	}
+	apierr.WriteData(w, http.StatusOK, lesson)
+}
+
 func (h *LessonHandler) List(w http.ResponseWriter, r *http.Request) {
 	courseID, err := uuid.Parse(chi.URLParam(r, "courseId"))
 	if err != nil {

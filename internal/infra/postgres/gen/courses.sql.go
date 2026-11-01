@@ -14,7 +14,7 @@ import (
 const createCourse = `-- name: CreateCourse :one
 INSERT INTO courses (title, description, rank, instructor_id, published)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, title, description, rank, instructor_id, created_at, updated_at, published
+RETURNING id, title, description, rank, instructor_id, created_at, updated_at, published, thumbnail_key
 `
 
 type CreateCourseParams struct {
@@ -43,6 +43,7 @@ func (q *Queries) CreateCourse(ctx context.Context, arg CreateCourseParams) (Cou
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Published,
+		&i.ThumbnailKey,
 	)
 	return i, err
 }
@@ -57,7 +58,7 @@ func (q *Queries) DeleteCourse(ctx context.Context, id uuid.UUID) error {
 }
 
 const getCourseByID = `-- name: GetCourseByID :one
-SELECT id, title, description, rank, instructor_id, created_at, updated_at, published FROM courses WHERE id = $1
+SELECT id, title, description, rank, instructor_id, created_at, updated_at, published, thumbnail_key FROM courses WHERE id = $1
 `
 
 func (q *Queries) GetCourseByID(ctx context.Context, id uuid.UUID) (Course, error) {
@@ -72,12 +73,13 @@ func (q *Queries) GetCourseByID(ctx context.Context, id uuid.UUID) (Course, erro
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Published,
+		&i.ThumbnailKey,
 	)
 	return i, err
 }
 
 const listCoursesByInstructor = `-- name: ListCoursesByInstructor :many
-SELECT id, title, description, rank, instructor_id, created_at, updated_at, published FROM courses WHERE instructor_id = $1
+SELECT id, title, description, rank, instructor_id, created_at, updated_at, published, thumbnail_key FROM courses WHERE instructor_id = $1
 ORDER BY created_at DESC
 `
 
@@ -99,6 +101,7 @@ func (q *Queries) ListCoursesByInstructor(ctx context.Context, instructorID uuid
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Published,
+			&i.ThumbnailKey,
 		); err != nil {
 			return nil, err
 		}
@@ -111,7 +114,7 @@ func (q *Queries) ListCoursesByInstructor(ctx context.Context, instructorID uuid
 }
 
 const listCoursesByRank = `-- name: ListCoursesByRank :many
-SELECT id, title, description, rank, instructor_id, created_at, updated_at, published FROM courses WHERE rank = $1 AND published = true
+SELECT id, title, description, rank, instructor_id, created_at, updated_at, published, thumbnail_key FROM courses WHERE rank = $1 AND published = true
 ORDER BY created_at DESC
 `
 
@@ -133,6 +136,7 @@ func (q *Queries) ListCoursesByRank(ctx context.Context, rank string) ([]Course,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Published,
+			&i.ThumbnailKey,
 		); err != nil {
 			return nil, err
 		}
@@ -157,7 +161,7 @@ const updateCourse = `-- name: UpdateCourse :one
 UPDATE courses
 SET title = $2, description = $3, rank = $4, published = $5, updated_at = now()
 WHERE id = $1
-RETURNING id, title, description, rank, instructor_id, created_at, updated_at, published
+RETURNING id, title, description, rank, instructor_id, created_at, updated_at, published, thumbnail_key
 `
 
 type UpdateCourseParams struct {
@@ -186,6 +190,21 @@ func (q *Queries) UpdateCourse(ctx context.Context, arg UpdateCourseParams) (Cou
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Published,
+		&i.ThumbnailKey,
 	)
 	return i, err
+}
+
+const updateCourseThumbnail = `-- name: UpdateCourseThumbnail :exec
+UPDATE courses SET thumbnail_key = $2, updated_at = now() WHERE id = $1
+`
+
+type UpdateCourseThumbnailParams struct {
+	ID           uuid.UUID `json:"id"`
+	ThumbnailKey string    `json:"thumbnail_key"`
+}
+
+func (q *Queries) UpdateCourseThumbnail(ctx context.Context, arg UpdateCourseThumbnailParams) error {
+	_, err := q.db.Exec(ctx, updateCourseThumbnail, arg.ID, arg.ThumbnailKey)
+	return err
 }

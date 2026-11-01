@@ -11,6 +11,9 @@ SELECT * FROM files WHERE lesson_id = $1 ORDER BY created_at DESC;
 -- name: UpdateFileIngestStatus :exec
 UPDATE files SET ingest_status = $2, updated_at = now() WHERE id = $1;
 
+-- name: DeleteFile :exec
+DELETE FROM files WHERE id = $1;
+
 -- name: AllFilesReadyForCourse :one
 SELECT NOT EXISTS (
     SELECT 1 FROM files f

@@ -43,6 +43,17 @@ func (s *ChatService) ListSessions(ctx context.Context, userID uuid.UUID) ([]dom
 	return s.chats.ListSessionsByUser(ctx, userID)
 }
 
+func (s *ChatService) DeleteSession(ctx context.Context, sessionID, userID uuid.UUID) error {
+	session, err := s.chats.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	if session.UserID != userID {
+		return domain.ErrForbidden
+	}
+	return s.chats.DeleteSession(ctx, sessionID)
+}
+
 func (s *ChatService) SendMessage(ctx context.Context, sessionID, userID uuid.UUID, query string) (io.ReadCloser, error) {
 	session, err := s.chats.GetSessionByID(ctx, sessionID)
 	if err != nil {
@@ -80,8 +91,8 @@ func (s *ChatService) SendMessage(ctx context.Context, sessionID, userID uuid.UU
 
 	stream, err := s.rag.ChatStream(ctx, port.ChatRequest{
 		CourseIDs: ids,
-		Query:    query,
-		History:  history,
+		Query:     query,
+		History:   history,
 	})
 	if err != nil {
 		return nil, err

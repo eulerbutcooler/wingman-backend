@@ -20,6 +20,9 @@ SET title = $2, description = $3, rank = $4, published = $5, updated_at = now()
 WHERE id = $1
 RETURNING *;
 
+-- name: UpdateCourseThumbnail :exec
+UPDATE courses SET thumbnail_key = $2, updated_at = now() WHERE id = $1;
+
 -- name: PublishCourse :exec
 UPDATE courses SET published = true, updated_at = now() WHERE id = $1;
 

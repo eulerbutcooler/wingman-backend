@@ -13,12 +13,12 @@ import (
 )
 
 type courseRepo struct {
-        q    *gen.Queries
-        pool *pgxpool.Pool
+	q    *gen.Queries
+	pool *pgxpool.Pool
 }
 
 func NewCourseRepo(pool *pgxpool.Pool) port.CourseRepository {
-        return &courseRepo{q: gen.New(pool), pool: pool}
+	return &courseRepo{q: gen.New(pool), pool: pool}
 }
 
 func (r *courseRepo) Create(ctx context.Context, course *domain.Course) error {
@@ -50,21 +50,21 @@ func (r *courseRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Course,
 }
 
 func (r *courseRepo) ListAll(ctx context.Context) ([]domain.Course, error) {
-        rows, err := r.pool.Query(ctx, "SELECT id, title, description, rank, instructor_id, published, created_at, updated_at FROM courses ORDER BY created_at DESC")
-        if err != nil {
-                return nil, err
-        }
-        defer rows.Close()
+	rows, err := r.pool.Query(ctx, "SELECT id, title, description, rank, instructor_id, published, thumbnail_key, created_at, updated_at FROM courses ORDER BY created_at DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
-        courses := []domain.Course{}
-        for rows.Next() {
-                var c gen.Course
-                if err := rows.Scan(&c.ID, &c.Title, &c.Description, &c.Rank, &c.InstructorID, &c.Published, &c.CreatedAt, &c.UpdatedAt); err != nil {
-                        return nil, err
-                }
-                courses = append(courses, *toDomainCourse(c))
-        }
-        return courses, rows.Err()
+	courses := []domain.Course{}
+	for rows.Next() {
+		var c gen.Course
+		if err := rows.Scan(&c.ID, &c.Title, &c.Description, &c.Rank, &c.InstructorID, &c.Published, &c.ThumbnailKey, &c.CreatedAt, &c.UpdatedAt); err != nil {
+			return nil, err
+		}
+		courses = append(courses, *toDomainCourse(c))
+	}
+	return courses, rows.Err()
 }
 
 func (r *courseRepo) ListByRank(ctx context.Context, rank string) ([]domain.Course, error) {
@@ -106,6 +106,13 @@ func (r *courseRepo) Update(ctx context.Context, course *domain.Course) error {
 	return nil
 }
 
+func (r *courseRepo) UpdateThumbnail(ctx context.Context, id uuid.UUID, key string) error {
+	return r.q.UpdateCourseThumbnail(ctx, gen.UpdateCourseThumbnailParams{
+		ID:           id,
+		ThumbnailKey: key,
+	})
+}
+
 func (r *courseRepo) Publish(ctx context.Context, id uuid.UUID) error {
 	return r.q.PublishCourse(ctx, id)
 }
@@ -122,6 +129,7 @@ func toDomainCourse(course gen.Course) *domain.Course {
 		Rank:         course.Rank,
 		InstructorID: course.InstructorID,
 		Published:    course.Published,
+		ThumbnailKey: course.ThumbnailKey,
 		CreatedAt:    course.CreatedAt,
 		UpdatedAt:    course.UpdatedAt,
 	}
