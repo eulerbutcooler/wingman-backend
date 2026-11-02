@@ -2,6 +2,8 @@ package handler
 
 import (
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/Amanyd/backend/internal/config"
@@ -39,8 +41,18 @@ func NewRouter(
 	r.Use(RequestLogger(log))
 	r.Use(middleware.Recoverer)
 
+	allowedOrigins := []string{"http://localhost:3000"}
+	if raw := strings.TrimSpace(os.Getenv("CORS_ALLOWED_ORIGINS")); raw != "" {
+		allowedOrigins = nil
+		for _, origin := range strings.Split(raw, ",") {
+			if origin = strings.TrimSpace(origin); origin != "" {
+				allowedOrigins = append(allowedOrigins, origin)
+			}
+		}
+	}
+
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:3000"},
+		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "Tus-Resumable", "Upload-Length", "Upload-Metadata", "Upload-Offset"},
 		ExposedHeaders:   []string{"Link", "Location", "Tus-Resumable", "Upload-Offset", "Upload-Length"},
