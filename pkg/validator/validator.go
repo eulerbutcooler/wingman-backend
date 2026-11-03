@@ -25,6 +25,7 @@ var validRanks = map[string]bool{
 	// Sailor ranks, junior to senior.
 	"seaman_ii":                               true,
 	"seaman_i":                                true,
+	"leading_seaman":                          true,
 	"leading_seaman_/_leading_rate":           true,
 	"petty_officer_(po)":                      true,
 	"chief_petty_officer_(cpo)":               true,
