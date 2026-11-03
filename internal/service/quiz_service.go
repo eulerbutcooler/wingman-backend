@@ -83,7 +83,7 @@ type QuizWithQuestions struct {
 	Questions []domain.Question `json:"questions,omitempty"`
 }
 
-func (s *QuizService) GetQuiz(ctx context.Context, quizID uuid.UUID) (*QuizWithQuestions, error) {
+func (s *QuizService) GetQuiz(ctx context.Context, quizID uuid.UUID, includeAnswers bool) (*QuizWithQuestions, error) {
 	quiz, err := s.quizzes.GetQuizByID(ctx, quizID)
 	if err != nil {
 		return nil, err
@@ -104,9 +104,11 @@ func (s *QuizService) GetQuiz(ctx context.Context, quizID uuid.UUID) (*QuizWithQ
 		}
 	}
 
-	for i := range questions {
-		// Strip answer from question payload sent to client during exam taking
-		questions[i].Answer = ""
+	if !includeAnswers {
+		for i := range questions {
+			// Strip answers for students so they can't inspect them during an attempt.
+			questions[i].Answer = ""
+		}
 	}
 
 	return &QuizWithQuestions{Quiz: *quiz, Questions: questions}, nil
@@ -127,7 +129,15 @@ func (s *QuizService) StartAttempt(ctx context.Context, quizID, userID uuid.UUID
 	return attempt, nil
 }
 
-func (s *QuizService) SubmitAnswer(ctx context.Context, attemptID, questionID uuid.UUID, userAnswer string) (*domain.Answer, error) {
+func (s *QuizService) SubmitAnswer(ctx context.Context, attemptID, questionID, userID uuid.UUID, userAnswer string) (*domain.Answer, error) {
+	attempt, err := s.quizzes.GetAttemptByID(ctx, attemptID)
+	if err != nil {
+		return nil, err
+	}
+	if attempt.UserID != userID {
+		return nil, domain.ErrForbidden
+	}
+
 	question, err := s.quizzes.GetQuestionByID(ctx, questionID)
 	if err != nil {
 		return nil, err
@@ -171,10 +181,13 @@ func (s *QuizService) SubmitAnswer(ctx context.Context, attemptID, questionID uu
 	return answer, nil
 }
 
-func (s *QuizService) FinishAttempt(ctx context.Context, attemptID uuid.UUID) (*domain.Attempt, error) {
+func (s *QuizService) FinishAttempt(ctx context.Context, attemptID, userID uuid.UUID) (*domain.Attempt, error) {
 	attempt, err := s.quizzes.GetAttemptByID(ctx, attemptID)
 	if err != nil {
 		return nil, err
+	}
+	if attempt.UserID != userID {
+		return nil, domain.ErrForbidden
 	}
 
 	answers, err := s.quizzes.ListAnswersByAttempt(ctx, attemptID)

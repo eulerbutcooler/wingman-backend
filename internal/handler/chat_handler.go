@@ -164,7 +164,8 @@ func (h *ChatHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	messages, err := h.svc.GetHistory(r.Context(), sessionID)
+	claims := GetClaims(r)
+	messages, err := h.svc.GetHistory(r.Context(), sessionID, claims.UserID)
 	if err != nil {
 		apierr.WriteJSON(w, mapDomainError(err))
 		return

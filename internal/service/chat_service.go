@@ -111,7 +111,14 @@ func (s *ChatService) SaveAssistantMessage(ctx context.Context, sessionID uuid.U
 	return s.chats.CreateMessage(ctx, assistantMsg)
 }
 
-func (s *ChatService) GetHistory(ctx context.Context, sessionID uuid.UUID) ([]domain.Message, error) {
+func (s *ChatService) GetHistory(ctx context.Context, sessionID, userID uuid.UUID) ([]domain.Message, error) {
+	session, err := s.chats.GetSessionByID(ctx, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if session.UserID != userID {
+		return nil, domain.ErrForbidden
+	}
 	return s.chats.ListMessages(ctx, sessionID, 100)
 }
 

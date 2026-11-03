@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/Amanyd/backend/internal/domain"
 	"github.com/Amanyd/backend/internal/service"
 	"github.com/Amanyd/backend/pkg/apierr"
 	"github.com/Amanyd/backend/pkg/validator"
@@ -53,7 +54,12 @@ func (h *QuizHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.svc.GetQuiz(r.Context(), quizID)
+	claims := GetClaims(r)
+	result, err := h.svc.GetQuiz(
+		r.Context(),
+		quizID,
+		claims.Role == domain.RoleInstructor,
+	)
 	if err != nil {
 		apierr.WriteJSON(w, mapDomainError(err))
 		return
@@ -105,7 +111,8 @@ func (h *QuizHandler) SubmitAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	answer, err := h.svc.SubmitAnswer(r.Context(), attemptID, questionID, req.Answer)
+	claims := GetClaims(r)
+	answer, err := h.svc.SubmitAnswer(r.Context(), attemptID, questionID, claims.UserID, req.Answer)
 	if err != nil {
 		apierr.WriteJSON(w, mapDomainError(err))
 		return
@@ -120,7 +127,8 @@ func (h *QuizHandler) FinishAttempt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	attempt, err := h.svc.FinishAttempt(r.Context(), attemptID)
+	claims := GetClaims(r)
+	attempt, err := h.svc.FinishAttempt(r.Context(), attemptID, claims.UserID)
 	if err != nil {
 		apierr.WriteJSON(w, mapDomainError(err))
 		return

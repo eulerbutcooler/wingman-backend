@@ -112,6 +112,7 @@ func main() {
 		syllabusRepo,
 		storage,
 		ragClient,
+		cache,
 		cfg.MinIO.MinIOBucket,
 	)
 	syllabusSvc := service.NewSyllabusService(
@@ -121,6 +122,7 @@ func main() {
 		storage,
 		ragClient,
 		lessonPlanSvc,
+		cache,
 		cfg.MinIO.MinIOBucket,
 	)
 	// Resume lesson-plan PDFs left pending/generating by a previous process.

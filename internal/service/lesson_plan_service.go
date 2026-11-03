@@ -21,6 +21,7 @@ type LessonPlanService struct {
 	syllabus port.SyllabusRepository
 	storage  port.ObjectStorage
 	rag      port.RagClient
+	cache    port.Cache
 	bucket   string
 	sem      chan struct{}
 	mu       sync.Mutex
@@ -33,6 +34,7 @@ func NewLessonPlanService(
 	syllabus port.SyllabusRepository,
 	storage port.ObjectStorage,
 	rag port.RagClient,
+	cache port.Cache,
 	bucket string,
 ) *LessonPlanService {
 	return &LessonPlanService{
@@ -41,6 +43,7 @@ func NewLessonPlanService(
 		syllabus: syllabus,
 		storage:  storage,
 		rag:      rag,
+		cache:    cache,
 		bucket:   bucket,
 		// Temporary throughput experiment: four subjects at a time on the
 		// 4-slot Modal llama.cpp server. Revert to 2 for the local 3-slot stack.
@@ -63,6 +66,16 @@ func (s *LessonPlanService) finish(courseID uuid.UUID) {
 	s.mu.Lock()
 	delete(s.active, courseID)
 	s.mu.Unlock()
+}
+
+func (s *LessonPlanService) invalidateLessonCache(
+	ctx context.Context,
+	courseID uuid.UUID,
+) {
+	if s.cache == nil {
+		return
+	}
+	_ = s.cache.Delete(ctx, "lessons:course:"+courseID.String())
 }
 
 // ResumeBacklog re-queues courses whose lesson-plan PDFs were marked
@@ -140,6 +153,8 @@ func (s *LessonPlanService) StartGeneration(
 	); err != nil {
 		return err
 	}
+	// Drop the cached lesson list so the UI immediately sees "generating".
+	s.invalidateLessonCache(ctx, courseID)
 
 	copied := *syllabus
 	launched = true
@@ -157,6 +172,8 @@ func (s *LessonPlanService) generate(
 ) {
 	s.sem <- struct{}{}
 	defer func() { <-s.sem }()
+	// Refresh the cached lesson list once every plan status has been updated.
+	defer s.invalidateLessonCache(ctx, courseID)
 
 	response, err := s.rag.GenerateLessonPlans(ctx, port.LessonPlanGenerateRequest{
 		Bucket:         s.bucket,
@@ -236,6 +253,16 @@ func (s *LessonPlanService) generate(
 
 	for _, lesson := range lessons {
 		if ready[lesson.ID] {
+			continue
+		}
+		// Only lessons that correspond to a detailed-syllabus row are expected
+		// to have a plan. Instructor-added extra lessons should not be marked
+		// failed just because the syllabus does not describe them.
+		rowIndex := lesson.OrderIdx
+		if lesson.SyllabusRowIndex != nil {
+			rowIndex = *lesson.SyllabusRowIndex
+		}
+		if rowIndex < 0 || rowIndex >= len(syllabus.Rows) {
 			continue
 		}
 		_, _ = s.lessons.UpdateLessonPlan(

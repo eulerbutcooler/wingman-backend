@@ -138,12 +138,17 @@ func (h *SyllabusHandler) Upload(w http.ResponseWriter, r *http.Request) {
 
 	claims := GetClaims(r)
 	subjectCode := strings.TrimSpace(r.FormValue("subject_code"))
+	generate := true
+	if raw := strings.ToLower(strings.TrimSpace(r.FormValue("generate"))); raw != "" {
+		generate = raw != "false" && raw != "0" && raw != "no"
+	}
 	syllabus, err := h.svc.Upload(
 		r.Context(),
 		courseID,
 		claims.UserID,
 		header.Filename,
 		subjectCode,
+		generate,
 		data,
 	)
 	if err != nil {

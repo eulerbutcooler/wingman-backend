@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/Amanyd/backend/internal/config"
 	"github.com/Amanyd/backend/internal/domain"
@@ -27,6 +28,10 @@ type TokenPair struct {
 }
 
 func (s *UserService) Register(ctx context.Context, name, enrollmentID, rank, password string, role domain.Role) (*domain.User, error) {
+	name = strings.TrimSpace(name)
+	enrollmentID = strings.TrimSpace(enrollmentID)
+	rank = strings.TrimSpace(rank)
+
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), 12)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
@@ -46,6 +51,8 @@ func (s *UserService) Register(ctx context.Context, name, enrollmentID, rank, pa
 }
 
 func (s *UserService) Login(ctx context.Context, enrollmentID, password string) (*TokenPair, error) {
+	enrollmentID = strings.TrimSpace(enrollmentID)
+
 	user, err := s.users.GetByEnrollmentID(ctx, enrollmentID)
 	if err != nil {
 		return nil, domain.ErrUnauthorized

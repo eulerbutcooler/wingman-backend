@@ -25,6 +25,7 @@ type SyllabusService struct {
 	storage     port.ObjectStorage
 	ragClient   port.RagClient
 	lessonPlans *LessonPlanService
+	cache       port.Cache
 	bucket      string
 }
 
@@ -35,6 +36,7 @@ func NewSyllabusService(
 	storage port.ObjectStorage,
 	ragClient port.RagClient,
 	lessonPlans *LessonPlanService,
+	cache port.Cache,
 	bucket string,
 ) *SyllabusService {
 	return &SyllabusService{
@@ -44,6 +46,7 @@ func NewSyllabusService(
 		storage:     storage,
 		ragClient:   ragClient,
 		lessonPlans: lessonPlans,
+		cache:       cache,
 		bucket:      bucket,
 	}
 }
@@ -69,6 +72,7 @@ func (s *SyllabusService) Upload(
 	courseID, instructorID uuid.UUID,
 	fileName string,
 	subjectCode string,
+	generate bool,
 	data []byte,
 ) (*domain.CourseSyllabus, error) {
 	if strings.ToLower(filepath.Ext(fileName)) != ".docx" {
@@ -135,6 +139,10 @@ func (s *SyllabusService) Upload(
 	}
 
 	rows := toDomainSyllabusRows(extracted.Rows)
+	topics := extracted.Topics
+	if topics == nil {
+		topics = []string{}
+	}
 
 	if err := s.syllabus.UpdateStatus(
 		ctx,
@@ -142,15 +150,27 @@ func (s *SyllabusService) Upload(
 		domain.SyllabusReady,
 		subjectCode,
 		subjectName,
-		extracted.Topics,
+		topics,
 		rows,
 		"",
 	); err != nil {
 		return nil, fmt.Errorf("save syllabus topics: %w", err)
 	}
 	syllabus.Status = domain.SyllabusReady
-	syllabus.Topics = extracted.Topics
+	syllabus.Topics = topics
 	syllabus.Rows = rows
+
+	// A syllabus uploaded to a single subject is also the source of its
+	// lessons and lesson-plan PDFs. The multi-subject importer uses the same
+	// helper below.
+	if len(rows) > 0 {
+		if _, err := s.syncLessonsForRows(ctx, course, rows, generate); err != nil {
+			return nil, err
+		}
+	} else {
+		s.invalidateLessonCache(ctx, courseID)
+	}
+
 	return syllabus, nil
 }
 
@@ -264,6 +284,17 @@ func (s *SyllabusService) ImportAll(
 		result.Subjects = append(result.Subjects, imported)
 	}
 
+	// The importer writes directly through the repositories, so drop the
+	// course/lesson caches the UI would otherwise read for up to five minutes.
+	if s.cache != nil {
+		for _, subject := range result.Subjects {
+			_ = s.cache.Delete(ctx, "course:"+subject.CourseID.String())
+			_ = s.cache.Delete(ctx, "lessons:course:"+subject.CourseID.String())
+		}
+		_ = s.cache.Delete(ctx, "courses:all")
+		_ = s.cache.Delete(ctx, "courses:rank:"+rank)
+	}
+
 	return result, nil
 }
 
@@ -324,10 +355,33 @@ func (s *SyllabusService) syncImportedSubject(
 		return 0, fmt.Errorf("save syllabus topics: %w", err)
 	}
 
+	count, err := s.syncLessonsForRows(ctx, course, rows, generate)
+	if err != nil {
+		return 0, err
+	}
+
+	if oldKey != "" && oldKey != key {
+		_ = s.storage.Delete(ctx, oldKey)
+	}
+
+	return count, nil
+}
+
+// syncLessonsForRows keeps one lesson per detailed-syllabus row. Existing
+// lessons are updated in place so uploaded files and progress survive a
+// revised syllabus; missing rows create new lessons. When generate is true,
+// lesson-plan PDF generation is queued for the whole subject.
+func (s *SyllabusService) syncLessonsForRows(
+	ctx context.Context,
+	course *domain.Course,
+	rows []domain.SyllabusRow,
+	generate bool,
+) (int, error) {
 	existingLessons, err := s.lessons.ListByCourse(ctx, course.ID)
 	if err != nil {
 		return 0, fmt.Errorf("list lessons: %w", err)
 	}
+
 	byRow := make(map[int]*domain.Lesson, len(existingLessons))
 	for index := range existingLessons {
 		lesson := &existingLessons[index]
@@ -339,10 +393,19 @@ func (s *SyllabusService) syncImportedSubject(
 		}
 	}
 
-	for index, row := range subject.Rows {
+	for index, row := range rows {
 		topic := strings.TrimSpace(row.Syllabus)
 		if topic == "" {
 			topic = strings.TrimSpace(row.SubTask)
+		}
+		if topic == "" {
+			topic = strings.TrimSpace(row.Task)
+		}
+		if topic == "" {
+			topic = strings.TrimSpace(row.Objective)
+		}
+		if topic == "" {
+			topic = fmt.Sprintf("Lesson %d", index+1)
 		}
 		title := fmt.Sprintf("LP %02d - %s", index+1, truncateText(topic, 180))
 
@@ -373,25 +436,33 @@ func (s *SyllabusService) syncImportedSubject(
 		}
 	}
 
-	if oldKey != "" && oldKey != key {
-		_ = s.storage.Delete(ctx, oldKey)
-	}
+	s.invalidateLessonCache(ctx, course.ID)
 
 	// Lesson plans are independent of supporting material and can start
 	// immediately. Slides, question banks and quizzes are deliberately
 	// deferred until the instructor uploads PDFs/PPTs and triggers
 	// "Generate content" from the subject builder.
-	if generate {
+	if generate && len(rows) > 0 {
 		if err := s.lessonPlans.StartGeneration(
 			ctx,
 			course.ID,
 			course.InstructorID,
 		); err != nil {
-			return len(subject.Rows), fmt.Errorf("queue lesson-plan generation: %w", err)
+			return len(rows), fmt.Errorf("queue lesson-plan generation: %w", err)
 		}
 	}
 
-	return len(subject.Rows), nil
+	return len(rows), nil
+}
+
+func (s *SyllabusService) invalidateLessonCache(
+	ctx context.Context,
+	courseID uuid.UUID,
+) {
+	if s.cache == nil {
+		return
+	}
+	_ = s.cache.Delete(ctx, "lessons:course:"+courseID.String())
 }
 
 func toDomainSyllabusRows(rows []port.SyllabusRow) []domain.SyllabusRow {

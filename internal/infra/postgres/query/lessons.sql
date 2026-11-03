@@ -46,7 +46,7 @@ UPDATE lessons
 SET lesson_plan_status = $2,
     lesson_plan_error = NULLIF($3, ''),
     updated_at = now()
-WHERE course_id = $1;
+WHERE course_id = $1 AND order_idx >= 0;
 
 -- name: UpdateLessonPlan :one
 UPDATE lessons

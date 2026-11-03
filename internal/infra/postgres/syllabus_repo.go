@@ -95,6 +95,13 @@ func (r *syllabusRepo) GetByCourse(ctx context.Context, courseID uuid.UUID) (*do
 	if errText != nil {
 		syllabus.Error = *errText
 	}
+	// Keep the wire shape stable: the UI expects arrays, never null.
+	if syllabus.Topics == nil {
+		syllabus.Topics = []string{}
+	}
+	if syllabus.Rows == nil {
+		syllabus.Rows = []domain.SyllabusRow{}
+	}
 	return &syllabus, nil
 }
 
