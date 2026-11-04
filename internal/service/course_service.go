@@ -456,6 +456,40 @@ func (s *CourseService) CreateLesson(ctx context.Context, courseID, instructorID
 	return lesson, nil
 }
 
+// GetMaterialsLesson returns the hidden lesson that stores subject-level
+// reference material without creating it.
+func (s *CourseService) GetMaterialsLesson(
+	ctx context.Context,
+	courseID uuid.UUID,
+) (*domain.Lesson, error) {
+	return s.lessons.GetMaterialsLesson(ctx, courseID)
+}
+
+// ListMaterialsFiles returns the files attached to a course's hidden
+// subject-reference-material lesson. Students can read these without being
+// able to create the hidden lesson themselves.
+func (s *CourseService) ListMaterialsFiles(
+	ctx context.Context,
+	courseID uuid.UUID,
+) ([]domain.FileAsset, error) {
+	lesson, err := s.lessons.GetMaterialsLesson(ctx, courseID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return []domain.FileAsset{}, nil
+		}
+		return nil, err
+	}
+
+	files, err := s.files.ListByLesson(ctx, lesson.ID)
+	if err != nil {
+		return nil, err
+	}
+	if files == nil {
+		files = []domain.FileAsset{}
+	}
+	return files, nil
+}
+
 // GetOrCreateMaterialsLesson returns the hidden lesson that stores
 // subject-level reference PDFs/PPTs. Files attached there are ingested with
 // the course ID, so retrieval can use them for every topic in the subject.

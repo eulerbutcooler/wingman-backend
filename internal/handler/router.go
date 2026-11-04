@@ -78,6 +78,7 @@ func NewRouter(
 
 		r.Get("/api/v1/courses", courseH.List)
 		r.Get("/api/v1/courses/{courseId}", courseH.Get)
+		r.Get("/api/v1/courses/{courseId}/materials", courseH.ListMaterials)
 		r.Get("/api/v1/courses/{courseId}/syllabus", syllabusH.Get)
 		r.Get("/api/v1/courses/{courseId}/lessons", lessonH.List)
 		r.Get("/api/v1/lessons/{lessonId}/topics", lessonH.ListTopics)

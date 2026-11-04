@@ -63,6 +63,29 @@ func (h *CourseHandler) Get(w http.ResponseWriter, r *http.Request) {
 	apierr.WriteData(w, http.StatusOK, course)
 }
 
+// ListMaterials exposes the subject-level reference files to both students
+// and instructors. The hidden lesson itself is never returned.
+func (h *CourseHandler) ListMaterials(w http.ResponseWriter, r *http.Request) {
+	courseID, err := uuid.Parse(chi.URLParam(r, "courseId"))
+	if err != nil {
+		apierr.WriteJSON(w, apierr.BadRequest("invalid course id"))
+		return
+	}
+
+	claims := GetClaims(r)
+	if _, err := h.svc.GetByID(r.Context(), courseID, string(claims.Role), claims.UserID); err != nil {
+		apierr.WriteJSON(w, mapDomainError(err))
+		return
+	}
+
+	files, err := h.svc.ListMaterialsFiles(r.Context(), courseID)
+	if err != nil {
+		apierr.WriteJSON(w, mapDomainError(err))
+		return
+	}
+	apierr.WriteData(w, http.StatusOK, files)
+}
+
 func (h *CourseHandler) List(w http.ResponseWriter, r *http.Request) {
 	claims := GetClaims(r)
 
